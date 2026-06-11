@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { db, auth } from "./firebase";
 import { collection, doc, onSnapshot, setDoc, deleteDoc, getDoc } from "firebase/firestore";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
@@ -113,7 +113,7 @@ function LoginScreen({onLogin,existingUser}){
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState("");
 
-  useEffect(()=>{ if(existingUser){setUser(existingUser);setModo("familia");} },[]);
+  useEffect(()=>{ if(existingUser){setUser(existingUser);setModo("familia");} },[existingUser]);
 
   const handleAuth=async()=>{
     if(!email.trim()||!senha){setErr("Preencha email e senha.");return;}
@@ -239,6 +239,7 @@ function MainApp({familyCode,user,onLogout}){
   const toast2=(msg,ok=true)=>{setToast({msg,ok});setTimeout(()=>setToast(null),2600);};
 
   useEffect(()=>{
+    const fp=col=>famPath(familyCode,col);
     const unsubs=[
       onSnapshot(collection(db,fp("lancamentos")),s=>setLancs(s.docs.map(d=>({id:d.id,...d.data()})))),
       onSnapshot(collection(db,fp("baseItems")),s=>setBaseItems(s.docs.map(d=>({id:d.id,...d.data()})))),
@@ -263,7 +264,6 @@ function MainApp({familyCode,user,onLogout}){
     await setDoc(doc(db,fp("baseItems"),id||String(Date.now())),{...rest,ativo:rest.ativo!==false});
     toast2(id?"Atualizado!":"Cadastrado!"); setModal(null);
   };
-  const deleteBase=async(id)=>{await deleteDoc(doc(db,fp("baseItems"),String(id)));toast2("Removido.");};
   const saveContaSaldo=async(contaId,saldo)=>{
     await setDoc(doc(db,fp("contas"),contaId),{id:contaId,saldo:+saldo},{merge:true});
   };
@@ -314,7 +314,6 @@ function MainApp({familyCode,user,onLogout}){
   const totalCartao=lancs.filter(l=>l.tipo==="cartao"&&l.mesFatura===viewMes&&l.anoFatura===viewAno).reduce((s,l)=>s+(+l.valor||0),0);
   const totalDizimo=confirmados.filter(l=>l.catId==="dizimo").reduce((s,l)=>s+(+l.valor||0),0);
   const totalPrevistas=previstasPendentes.reduce((s,p)=>s+p.restante,0);
-  const saldoAnt=contas.reduce((s,c)=>s+(+c.saldo||0),0); // usa total das contas como base
   const saldoLivre=totalEntradas-totalSaidas-totalCartao-totalPrevistas;
 
   const totalInvestido=investimentos.reduce((s,i)=>s+(+i.saldoAtual||0),0);
@@ -325,7 +324,6 @@ function MainApp({familyCode,user,onLogout}){
   const ultimoDia=new Date(viewAno,viewMes+1,0).getDate();
   const diasFim=isNow?Math.max(1,ultimoDia-now.getDate()):ultimoDia;
   const dias26=isNow?(now.getDate()<=26?26-now.getDate():Math.max(1,Math.ceil((new Date(viewAno,viewMes+1,26)-now)/86400000))):26;
-  const nextM=addM(viewMes,viewAno,1);
   const saldoProximo=saldoLivre; // simplificado
   const vpdVista=saldoLivre/diasFim;
   const vpdCartao=saldoProximo/Math.max(1,dias26);
@@ -673,7 +671,6 @@ function TabCartoes({lancs,viewMes,viewAno,setViewMes,setViewAno,customCats,allC
 // ─── Tab Contas ───────────────────────────────────────────────────────────────
 function TabContas({contas,lancs,viewMes,viewAno,setViewMes,setViewAno,onAjustarSaldo,onTransferencia,onPagarFatura,customCats}){
   const [contaAtiva,setContaAtiva]=useState(null);
-  const [editSaldo,setEditSaldo]=useState({});
   const totalContas=CONTAS_LISTA.reduce((s,c)=>{const ct=contas.find(x=>x.id===c);return s+(ct?+ct.saldo||0:0);},0);
   const getSaldo=id=>{const c=contas.find(x=>x.id===id);return c?+c.saldo||0:0;};
   const CORES_CONTAS={"C6":"#ef4444","Inter":"#f97316","Caixa":"#3b82f6","XP":"#10b981","Santander":"#8b5cf6"};
