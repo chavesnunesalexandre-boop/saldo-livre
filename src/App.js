@@ -265,7 +265,10 @@ function MainApp({familyCode,user,onLogout}){
     toast2(id?"Atualizado!":"Cadastrado!"); setModal(null);
   };
   const saveContaSaldo=async(contaId,saldo)=>{
-    await setDoc(doc(db,fp("contas"),contaId),{id:contaId,saldo:+saldo},{merge:true});
+    const valor=Number(saldo);
+    if(!Number.isFinite(valor)) return;
+    await setDoc(doc(db,fp("contas"),contaId),{id:contaId,saldo:valor,updatedAt:Date.now()},{merge:true});
+    toast2(`Saldo de ${contaId} salvo!`);
   };
   const saveTransferencia=async(data)=>{
     const id=String(Date.now());
@@ -314,7 +317,8 @@ function MainApp({familyCode,user,onLogout}){
   const totalCartao=lancs.filter(l=>l.tipo==="cartao"&&l.mesFatura===viewMes&&l.anoFatura===viewAno).reduce((s,l)=>s+(+l.valor||0),0);
   const totalDizimo=confirmados.filter(l=>l.catId==="dizimo").reduce((s,l)=>s+(+l.valor||0),0);
   const totalPrevistas=previstasPendentes.reduce((s,p)=>s+p.restante,0);
-  const saldoLivre=totalEntradas-totalSaidas-totalCartao-totalPrevistas;
+  const totalContas=CONTAS_LISTA.reduce((s,c)=>{const ct=contas.find(x=>x.id===c);return s+(ct?+ct.saldo||0:0);},0);
+  const saldoLivre=totalContas-totalCartao-totalPrevistas;
 
   const totalInvestido=investimentos.reduce((s,i)=>s+(+i.saldoAtual||0),0);
 
