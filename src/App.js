@@ -203,21 +203,94 @@ function LoginScreen({onLogin,existingUser}){
   );
 }
 
+// ─── Onboarding ───────────────────────────────────────────────────────────────
+function OnboardingScreen({familyCode,onConcluir}){
+  const fp=col=>famPath(familyCode,col);
+  const CORES={"C6":"#ef4444","Inter":"#f97316","Caixa":"#3b82f6","XP":"#10b981","Santander":"#8b5cf6"};
+  const [saldos,setSaldos]=useState({"C6":"","Inter":"","Caixa":"","XP":"","Santander":""});
+  const [loading,setLoading]=useState(false);
+
+  const handleConcluir=async()=>{
+    setLoading(true);
+    for(const [id,saldo] of Object.entries(saldos)){
+      if(saldo!==""){
+        await setDoc(doc(db,fp("contas"),id),{id,saldo:+saldo},{merge:true});
+      }
+    }
+    // Marca onboarding como concluído
+    await setDoc(doc(db,`familias/${familyCode}`),{onboardingConcluido:true},{merge:true});
+    setLoading(false);
+    onConcluir();
+  };
+
+  return(
+    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#6c63ff 0%,#a78bfa 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"'Inter','Segoe UI',sans-serif"}}>
+      <div style={{background:"#fff",borderRadius:24,padding:"32px 24px",width:"100%",maxWidth:400,boxShadow:"0 24px 80px rgba(0,0,0,0.2)"}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{fontSize:40,marginBottom:8}}>🏦</div>
+          <div style={{fontSize:22,fontWeight:900,color:"#1f2937",letterSpacing:"-0.5px"}}>Saldo inicial</div>
+          <div style={{fontSize:13,color:"#6b7280",marginTop:6,lineHeight:1.5}}>Informe o saldo atual de cada conta bancária. Você pode pular e preencher depois.</div>
+        </div>
+
+        {CONTAS_LISTA.map(id=>{
+          const cor=CORES[id]||PURPLE;
+          return(
+            <div key={id} style={{marginBottom:12}}>
+              <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:4,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>
+                <span style={{color:cor}}>●</span> {id}
+              </label>
+              <div style={{position:"relative"}}>
+                <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:13,color:"#9ca3af",fontWeight:600}}>R$</span>
+                <input
+                  type="number"
+                  value={saldos[id]}
+                  onChange={e=>setSaldos(p=>({...p,[id]:e.target.value}))}
+                  placeholder="0,00"
+                  style={{...S.inp,paddingLeft:36,borderColor:saldos[id]?cor:"#e0e0f0"}}
+                />
+              </div>
+            </div>
+          );
+        })}
+
+        <button onClick={handleConcluir} disabled={loading} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",padding:"13px 0",fontSize:14,marginTop:8,opacity:loading?.7:1}}>
+          {loading?"Salvando...":"✓ Começar a usar"}
+        </button>
+        <button onClick={onConcluir} style={{width:"100%",background:"none",border:"none",color:"#9ca3af",fontSize:13,fontWeight:600,marginTop:10,cursor:"pointer",padding:"8px 0"}}>
+          Pular por agora →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── App Root ─────────────────────────────────────────────────────────────────
 export default function App(){
   const [user,setUser]=useState(null);
   const [familyCode,setFamilyCode]=useState(()=>localStorage.getItem("sl2_family")||null);
   const [authReady,setAuthReady]=useState(false);
+  const [onboarding,setOnboarding]=useState(false);
+
   useEffect(()=>{
     return onAuthStateChanged(auth,u=>{
       setUser(u);setAuthReady(true);
       if(!u){setFamilyCode(null);localStorage.removeItem("sl2_family");}
     });
   },[]);
-  const handleLogin=(u,c)=>{setUser(u);setFamilyCode(c);};
-  const handleLogout=async()=>{await signOut(auth);setFamilyCode(null);localStorage.removeItem("sl2_family");};
+
+  const handleLogin=async(u,c)=>{
+    setUser(u);setFamilyCode(c);
+    // Verifica se é família nova (sem onboarding concluído)
+    const snap=await getDoc(doc(db,`familias/${c}`));
+    if(snap.exists()&&!snap.data().onboardingConcluido){
+      setOnboarding(true);
+    }
+  };
+  const handleLogout=async()=>{await signOut(auth);setFamilyCode(null);localStorage.removeItem("sl2_family");setOnboarding(false);};
+
   if(!authReady) return <div style={{background:"linear-gradient(135deg,#6c63ff,#a78bfa)",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontFamily:"Inter,sans-serif",fontSize:16,fontWeight:700}}>💚 Carregando...</div>;
   if(!user||!familyCode) return <LoginScreen onLogin={handleLogin} existingUser={user}/>;
+  if(onboarding) return <OnboardingScreen familyCode={familyCode} onConcluir={()=>setOnboarding(false)}/>;
   return <MainApp familyCode={familyCode} user={user} onLogout={handleLogout}/>;
 }
 
