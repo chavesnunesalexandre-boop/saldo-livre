@@ -10,7 +10,7 @@ const HOJE = new Date();
 const FORMAS_PAG = ["💳 Crédito","📱 Pix","🏦 Débito","🔄 Déb. Automático","📄 Boleto","💵 Dinheiro","📤 TED/DOC"];
 const CONTAS_LISTA = ["C6","Inter","Caixa","XP","Santander"];
 const CARTOES_LISTA = ["C6","XP","Nubank","Inter","Outro"];
-const MEMBROS = ["Alexandre","Tahis","Família"];
+// Membros agora vêm do Firebase: familias/{familyCode}/membros — sem lista fixa.
 const TIPOS_INVEST = ["Renda Fixa","Ações","FII","Previdência","Outros"];
 const TIPOS_DEDUCAO_IR = ["Saúde/Médico","Educação","Previdência Privada","Doação","Outro"];
 
@@ -248,10 +248,22 @@ function OnboardingScreen({familyCode,onConcluir}){
   const fp=col=>famPath(familyCode,col);
   const CORES={"C6":"#ef4444","Inter":"#f97316","Caixa":"#3b82f6","XP":"#10b981","Santander":"#8b5cf6"};
   const [saldos,setSaldos]=useState({"C6":"","Inter":"","Caixa":"","XP":"","Santander":""});
+  const [membros,setMembros]=useState([]);
+  const [novoMembro,setNovoMembro]=useState("");
+  const [err,setErr]=useState("");
   const [loading,setLoading]=useState(false);
 
+  const addMembro=()=>{
+    const n=novoMembro.trim(); if(!n) return;
+    if(membros.some(m=>m.nome.toLowerCase()===n.toLowerCase())){ setErr("Membro já adicionado."); return; }
+    setMembros(p=>[...p,{id:String(Date.now()),nome:n}]); setNovoMembro(""); setErr("");
+  };
+  const remMembro=(id)=>setMembros(p=>p.filter(m=>m.id!==id));
+
   const handleConcluir=async()=>{
+    if(membros.length===0){ setErr("Adicione pelo menos 1 membro da família."); return; }
     setLoading(true);
+    for(const m of membros){ await setDoc(doc(db,fp("membros"),m.id),{id:m.id,nome:m.nome}); }
     for(const [id,saldo] of Object.entries(saldos)){
       if(saldo!==""){
         await setDoc(doc(db,fp("contas"),id),{id,saldo:+saldo},{merge:true});
@@ -266,11 +278,32 @@ function OnboardingScreen({familyCode,onConcluir}){
   return(
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#6c63ff 0%,#a78bfa 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"'Inter','Segoe UI',sans-serif"}}>
       <div style={{background:"#fff",borderRadius:24,padding:"32px 24px",width:"100%",maxWidth:400,boxShadow:"0 24px 80px rgba(0,0,0,0.2)"}}>
-        <div style={{textAlign:"center",marginBottom:28}}>
-          <div style={{fontSize:40,marginBottom:8}}>🏦</div>
-          <div style={{fontSize:22,fontWeight:900,color:"#1f2937",letterSpacing:"-0.5px"}}>Saldo inicial</div>
-          <div style={{fontSize:13,color:"#6b7280",marginTop:6,lineHeight:1.5}}>Informe o saldo atual de cada conta bancária. Você pode pular e preencher depois.</div>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{fontSize:40,marginBottom:8}}>👋</div>
+          <div style={{fontSize:22,fontWeight:900,color:"#1f2937",letterSpacing:"-0.5px"}}>Bem-vindo!</div>
+          <div style={{fontSize:13,color:"#6b7280",marginTop:6,lineHeight:1.5}}>Vamos configurar sua família.</div>
         </div>
+
+        {/* Membros */}
+        <div style={{marginBottom:18}}>
+          <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:8,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>👥 Membros da família</label>
+          <div style={{display:"flex",gap:8,marginBottom:10}}>
+            <input value={novoMembro} onChange={e=>setNovoMembro(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addMembro()} placeholder="Nome (ex: Alexandre)" style={S.inp}/>
+            <button type="button" onClick={addMembro} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),padding:"0 18px",fontSize:18,flexShrink:0}}>+</button>
+          </div>
+          {membros.length===0
+            ? <div style={{fontSize:12,color:"#9ca3af",padding:"2px 0 0 2px"}}>Adicione pelo menos 1 membro.</div>
+            : membros.map(m=>(
+              <div key={m.id} style={{display:"flex",alignItems:"center",gap:8,background:"#f8f9ff",border:"1.5px solid #e0e0f0",borderRadius:10,padding:"8px 12px",marginBottom:6}}>
+                <span style={{flex:1,fontSize:13,fontWeight:700,color:"#1f2937"}}>👤 {m.nome}</span>
+                <button type="button" onClick={()=>remMembro(m.id)} style={{background:"#fef2f2",border:"none",borderRadius:8,color:"#ef4444",padding:"4px 8px",cursor:"pointer",fontSize:11}}>✕</button>
+              </div>
+            ))
+          }
+        </div>
+
+        <div style={{height:1,background:"#f0f0f5",margin:"4px 0 16px"}}/>
+        <div style={{fontSize:13,fontWeight:800,color:"#374151",marginBottom:12}}>🏦 Saldo inicial das contas <span style={{fontWeight:600,color:"#9ca3af"}}>(opcional)</span></div>
 
         {CONTAS_LISTA.map(id=>{
           const cor=CORES[id]||PURPLE;
@@ -293,11 +326,12 @@ function OnboardingScreen({familyCode,onConcluir}){
           );
         })}
 
+        {err&&<div style={{fontSize:12,color:"#ef4444",marginTop:6,marginBottom:4,background:"#fef2f2",borderRadius:8,padding:"8px 12px"}}>{err}</div>}
         <button onClick={handleConcluir} disabled={loading} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",padding:"13px 0",fontSize:14,marginTop:8,opacity:loading?.7:1}}>
           {loading?"Salvando...":"✓ Começar a usar"}
         </button>
-        <button onClick={onConcluir} style={{width:"100%",background:"none",border:"none",color:"#9ca3af",fontSize:13,fontWeight:600,marginTop:10,cursor:"pointer",padding:"8px 0"}}>
-          Pular por agora →
+        <button onClick={handleConcluir} disabled={loading} style={{width:"100%",background:"none",border:"none",color:"#9ca3af",fontSize:13,fontWeight:600,marginTop:10,cursor:"pointer",padding:"8px 0"}}>
+          Pular saldos (membros obrigatórios) →
         </button>
       </div>
     </div>
@@ -344,12 +378,14 @@ function MainApp({familyCode,user,onLogout}){
   const [customCats,setCustomCats]=useState([]);
   const [contas,setContas]=useState([]);
   const [investimentos,setInvestimentos]=useState([]);
+  const [membros,setMembros]=useState([]);
   const [loading,setLoading]=useState(true);
   const [toast,setToast]=useState(null);
   const [modal,setModal]=useState(null); // {tipo, data}
 
   const fp=col=>famPath(familyCode,col);
   const toast2=(msg,ok=true)=>{setToast({msg,ok});setTimeout(()=>setToast(null),2600);};
+  const nomesMembros=membros.map(m=>m.nome).filter(Boolean);
 
   useEffect(()=>{
     const fp=col=>famPath(familyCode,col);
@@ -359,6 +395,7 @@ function MainApp({familyCode,user,onLogout}){
       onSnapshot(collection(db,fp("categorias")),s=>setCustomCats(s.docs.map(d=>({id:d.id,...d.data()})))),
       onSnapshot(collection(db,fp("contas")),s=>setContas(s.docs.map(d=>({id:d.id,...d.data()})))),
       onSnapshot(collection(db,fp("investimentos")),s=>setInvestimentos(s.docs.map(d=>({id:d.id,...d.data()})))),
+      onSnapshot(collection(db,fp("membros")),s=>setMembros(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.nome||"").localeCompare(b.nome||"")))),
     ];
     setLoading(false);
     return()=>unsubs.forEach(u=>u());
@@ -376,7 +413,7 @@ function MainApp({familyCode,user,onLogout}){
     const base=Date.now();
     await Promise.all(items.map((it,i)=>setDoc(doc(db,fp("lancamentos"),String(base+i)),{
       tipo:"saida", desc:it.nome, valor:+it.valor||0, catId:it.catId||"alimentacao_nr",
-      formaPag:"💳 Crédito", contaId:"", membro:MEMBROS[0], mes:viewMes, ano:viewAno,
+      formaPag:"💳 Crédito", contaId:"", membro:nomesMembros[0]||"", mes:viewMes, ano:viewAno,
       data:todayStr(), status:"confirmado", origem:"nfe", updatedAt:base+i
     })));
     toast2(`${items.length} lançamento(s) importado(s)!`); setModal(null);
@@ -387,11 +424,19 @@ function MainApp({familyCode,user,onLogout}){
     toast2(id?"Atualizado!":"Cadastrado!"); setModal(null);
   };
   const deleteBase=async(id)=>{await deleteDoc(doc(db,fp("baseItems"),String(id)));toast2("Removido.");};
+  const saveMembro=async(nome)=>{
+    const n=(nome||"").trim(); if(!n) return;
+    if(membros.some(m=>(m.nome||"").toLowerCase()===n.toLowerCase())){ toast2("Membro já existe.",false); return; }
+    const id=String(Date.now());
+    await setDoc(doc(db,fp("membros"),id),{id,nome:n});
+    toast2("Membro adicionado!");
+  };
+  const deleteMembro=async(id)=>{await deleteDoc(doc(db,fp("membros"),String(id)));toast2("Membro removido.");};
   const confirmarPendente=async(p,valorReal)=>{
     const tm=BASE_TIPOS[p.baseTipo]||BASE_TIPOS.despesa_fixa;
     const entry={
       tipo:tm.lancTipo, desc:p.desc, valor:+valorReal||0, catId:p.catId||"",
-      membro:p.membro||MEMBROS[0], status:"confirmado", _baseId:p._baseId,
+      membro:p.membro||nomesMembros[0]||"", status:"confirmado", _baseId:p._baseId,
       mes:viewMes, ano:viewAno, data:todayStr(), updatedAt:Date.now(),
     };
     if(tm.lancTipo==="cartao"){ entry.cartao=p.cartao||CARTOES_LISTA[0]; entry.mesFatura=viewMes; entry.anoFatura=viewAno; entry.parcelas=1; }
@@ -408,9 +453,9 @@ function MainApp({familyCode,user,onLogout}){
     const id=String(Date.now());
     const {contaOrigem,contaDestino,valor,desc,data:dt,mes,ano}=data;
     // Saída da conta origem
-    await setDoc(doc(db,fp("lancamentos"),id+"_s"),{tipo:"saida",desc:desc||`Transferência → ${contaDestino}`,valor:+valor,contaId:contaOrigem,formaPag:"TED/DOC",catId:"outras",mes:+mes,ano:+ano,data:dt,membro:"Família",status:"confirmado",updatedAt:Date.now()});
+    await setDoc(doc(db,fp("lancamentos"),id+"_s"),{tipo:"saida",desc:desc||`Transferência → ${contaDestino}`,valor:+valor,contaId:contaOrigem,formaPag:"TED/DOC",catId:"outras",mes:+mes,ano:+ano,data:dt,membro:nomesMembros[0]||"",status:"confirmado",updatedAt:Date.now()});
     // Entrada na conta destino
-    await setDoc(doc(db,fp("lancamentos"),id+"_e"),{tipo:"entrada",desc:desc||`Transferência ← ${contaOrigem}`,valor:+valor,contaId:contaDestino,formaPag:"TED/DOC",catId:"outras_rec",mes:+mes,ano:+ano,data:dt,membro:"Família",status:"confirmado",updatedAt:Date.now()});
+    await setDoc(doc(db,fp("lancamentos"),id+"_e"),{tipo:"entrada",desc:desc||`Transferência ← ${contaOrigem}`,valor:+valor,contaId:contaDestino,formaPag:"TED/DOC",catId:"outras_rec",mes:+mes,ano:+ano,data:dt,membro:nomesMembros[0]||"",status:"confirmado",updatedAt:Date.now()});
     // Atualiza saldos
     const co=contas.find(c=>c.id===contaOrigem);
     const cd=contas.find(c=>c.id===contaDestino);
@@ -472,8 +517,8 @@ function MainApp({familyCode,user,onLogout}){
       {toast&&<Toast msg={toast.msg} ok={toast.ok}/>}
 
       {/* Modais */}
-      {modal?.tipo==="lancamento"&&<LancForm data={modal.data} onSave={saveLanc} onClose={()=>setModal(null)} allCats={allCats} viewMes={viewMes} viewAno={viewAno} onImportNFe={importNFe}/>}
-      {modal?.tipo==="base"&&<BaseForm data={modal.data} onSave={saveBase} onClose={()=>setModal(null)} allCats={allCats}/>}
+      {modal?.tipo==="lancamento"&&<LancForm data={modal.data} onSave={saveLanc} onClose={()=>setModal(null)} allCats={allCats} viewMes={viewMes} viewAno={viewAno} onImportNFe={importNFe} membros={nomesMembros}/>}
+      {modal?.tipo==="base"&&<BaseForm data={modal.data} onSave={saveBase} onClose={()=>setModal(null)} allCats={allCats} membros={nomesMembros}/>}
       {modal?.tipo==="confirmarPendente"&&<ConfirmPendenteModal pendente={modal.data} onConfirm={v=>confirmarPendente(modal.data,v)} onClose={()=>setModal(null)}/>}
       {modal?.tipo==="transferencia"&&<TransfForm data={modal.data} onSave={saveTransferencia} onClose={()=>setModal(null)} contas={contas} viewMes={viewMes} viewAno={viewAno}/>}
       {modal?.tipo==="investimento"&&<InvestForm data={modal.data} onSave={saveInvest} onClose={()=>setModal(null)}/>}
@@ -644,7 +689,7 @@ function MainApp({familyCode,user,onLogout}){
 
       {/* CONFIGURAÇÕES */}
       {tab==="config"&&(
-        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout}/>
+        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} membros={membros} onAddMembro={saveMembro} onDelMembro={deleteMembro} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout}/>
       )}
 
       {/* FAB */}
@@ -1166,8 +1211,8 @@ function LeitorNFe({allCats,onClose,onImport}){
   );
 }
 
-function LancForm({data,onSave,onClose,allCats,viewMes,viewAno,onImportNFe}){
-  const [f,setF]=useState({tipo:"saida",desc:"",valor:"",catId:"",formaPag:"📱 Pix",contaId:"C6",cartao:"C6",membro:MEMBROS[0],mes:viewMes,ano:viewAno,data:todayStr(),status:"confirmado",parcelas:1,irDedutivel:false,irTipo:"",...data});
+function LancForm({data,onSave,onClose,allCats,viewMes,viewAno,onImportNFe,membros=[]}){
+  const [f,setF]=useState({tipo:"saida",desc:"",valor:"",catId:"",formaPag:"📱 Pix",contaId:"C6",cartao:"C6",membro:membros[0]||"",mes:viewMes,ano:viewAno,data:todayStr(),status:"confirmado",parcelas:1,irDedutivel:false,irTipo:"",...data});
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const [showNFe,setShowNFe]=useState(false);
   const isCartao=f.tipo==="cartao";
@@ -1209,7 +1254,7 @@ function LancForm({data,onSave,onClose,allCats,viewMes,viewAno,onImportNFe}){
         </>
       )}
       <div style={{display:"flex",gap:10}}>
-        <Field label="Membro" half><select value={f.membro} onChange={e=>set("membro",e.target.value)} style={S.inp}>{MEMBROS.map(m=><option key={m}>{m}</option>)}</select></Field>
+        <Field label="Membro" half><select value={f.membro} onChange={e=>set("membro",e.target.value)} style={S.inp}>{membros.length?membros.map(m=><option key={m}>{m}</option>):<option value="">— Cadastre em ⚙️ Ajustes —</option>}</select></Field>
         <Field label="Categoria" half>
           <select value={f.catId} onChange={e=>set("catId",e.target.value)} style={S.inp}>
             <option value="">— Categoria —</option>
@@ -1255,8 +1300,8 @@ function LancForm({data,onSave,onClose,allCats,viewMes,viewAno,onImportNFe}){
   );
 }
 
-function BaseForm({data,onSave,onClose,allCats}){
-  const [f,setF]=useState({tipo:"prevista",desc:"",valorPrevisto:"",catId:"",membro:MEMBROS[0],mesInicio:HOJE.getMonth(),anoInicio:HOJE.getFullYear(),cartao:CARTOES_LISTA[0],parcelas:1,parcelaAtual:1,mesFatura:HOJE.getMonth(),anoFatura:HOJE.getFullYear(),ativo:true,...data});
+function BaseForm({data,onSave,onClose,allCats,membros=[]}){
+  const [f,setF]=useState({tipo:"prevista",desc:"",valorPrevisto:"",catId:"",membro:membros[0]||"",mesInicio:HOJE.getMonth(),anoInicio:HOJE.getFullYear(),cartao:CARTOES_LISTA[0],parcelas:1,parcelaAtual:1,mesFatura:HOJE.getMonth(),anoFatura:HOJE.getFullYear(),ativo:true,...data});
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const tm=BASE_TIPOS[f.tipo]||BASE_TIPOS.prevista;
   const isParcela=f.tipo==="parcela_cartao";
@@ -1275,7 +1320,7 @@ function BaseForm({data,onSave,onClose,allCats}){
       <Field label="Descrição"><input value={f.desc} onChange={e=>set("desc",e.target.value)} placeholder={f.tipo==="receita_fixa"?"Ex: Salário, Aluguel recebido...":f.tipo==="despesa_fixa"?"Ex: Escola, Plano de saúde...":isParcela?"Ex: Geladeira, Notebook...":"Ex: Conta de luz, Medicamentos..."} style={S.inp}/></Field>
       <div style={{display:"flex",gap:10}}>
         <Field label={isParcela?"Valor da parcela (R$)":"Valor previsto (R$)"} half><input value={f.valorPrevisto} onChange={e=>set("valorPrevisto",e.target.value)} type="number" placeholder="0,00" style={S.inp}/></Field>
-        <Field label="Membro" half><select value={f.membro} onChange={e=>set("membro",e.target.value)} style={S.inp}>{MEMBROS.map(m=><option key={m}>{m}</option>)}</select></Field>
+        <Field label="Membro" half><select value={f.membro} onChange={e=>set("membro",e.target.value)} style={S.inp}>{membros.length?membros.map(m=><option key={m}>{m}</option>):<option value="">— Cadastre em ⚙️ Ajustes —</option>}</select></Field>
       </div>
       <Field label="Categoria">
         <select value={f.catId} onChange={e=>set("catId",e.target.value)} style={S.inp}>
@@ -1342,7 +1387,9 @@ function ConfirmPendenteModal({pendente,onConfirm,onClose}){
 }
 
 // ─── Tab Configurações ────────────────────────────────────────────────────────
-function TabConfig({baseItems,customCats,user,familyCode,onAdd,onEdit,onDelete,onLogout}){
+function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,onDelMembro,onAdd,onEdit,onDelete,onLogout}){
+  const [novoMembro,setNovoMembro]=useState("");
+  const addM2=()=>{ const n=novoMembro.trim(); if(!n) return; onAddMembro&&onAddMembro(n); setNovoMembro(""); };
   return(
     <div>
       <div style={{background:"linear-gradient(135deg,#475569,#94a3b8)",padding:"20px 20px 28px",borderRadius:"0 0 28px 28px"}}>
@@ -1353,6 +1400,23 @@ function TabConfig({baseItems,customCats,user,familyCode,onAdd,onEdit,onDelete,o
         </div>
       </div>
       <div style={{padding:"16px 16px 0"}}>
+        {/* Membros */}
+        <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:10}}>👥 Membros</div>
+        <div style={{display:"flex",gap:8,marginBottom:10}}>
+          <input value={novoMembro} onChange={e=>setNovoMembro(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addM2()} placeholder="Nome do membro" style={S.inp}/>
+          <button onClick={addM2} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),padding:"0 18px",fontSize:18,flexShrink:0}}>+</button>
+        </div>
+        {membros.length===0
+          ? <div style={{fontSize:12,color:"#9ca3af",marginBottom:18,padding:"0 2px"}}>Nenhum membro cadastrado.</div>
+          : <div style={{marginBottom:18}}>{membros.map(m=>(
+              <div key={m.id} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1.5px solid #f0f0f5",borderRadius:10,padding:"8px 12px",marginBottom:6,boxShadow:"0 2px 6px rgba(0,0,0,0.04)"}}>
+                <span style={{flex:1,fontSize:13,fontWeight:700,color:"#1f2937"}}>👤 {m.nome}</span>
+                <button onClick={()=>onDelMembro&&onDelMembro(m.id)} style={{background:"#fef2f2",border:"none",borderRadius:8,color:"#ef4444",padding:"5px 7px",cursor:"pointer",fontSize:11}}>✕</button>
+              </div>
+            ))}</div>
+        }
+        <div style={{height:1,background:"#f0f0f5",marginBottom:16}}/>
+
         {/* Cadastro Base */}
         <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:4}}>📦 Cadastro Base</div>
         <div style={{fontSize:11,color:"#9ca3af",marginBottom:14}}>Itens recorrentes que geram pendentes automáticos todo mês.</div>
