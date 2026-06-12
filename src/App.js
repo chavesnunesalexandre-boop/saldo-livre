@@ -8,41 +8,48 @@ import { Html5Qrcode } from "html5-qrcode";
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const HOJE = new Date();
 const FORMAS_PAG = ["💳 Crédito","📱 Pix","🏦 Débito","🔄 Déb. Automático","📄 Boleto","💵 Dinheiro","📤 TED/DOC"];
-const CONTAS_LISTA = ["C6","Inter","Caixa","XP","Santander"];
-const CARTOES_LISTA = ["C6","XP","Nubank","Inter","Outro"];
+// Contas e cartões agora vêm do Firebase: familias/{code}/contas e familias/{code}/cartoes — sem listas fixas.
+const TIPOS_CONTA = [["banco","🏦 Conta bancária"],["carteira","👛 Carteira"],["outro","📦 Outro"]];
+const CORES_PALETA = ["#1a1a1a","#10b981","#ef4444","#3b82f6","#f59e0b","#8b5cf6","#ec4899","#14b8a6","#6b7280"];
 // Membros agora vêm do Firebase: familias/{familyCode}/membros — sem lista fixa.
 const TIPOS_INVEST = ["Renda Fixa","Ações","FII","Previdência","Outros"];
 const TIPOS_DEDUCAO_IR = ["Saúde/Médico","Educação","Previdência Privada","Doação","Outro"];
 
 const CATS_RECEITA = [
-  {id:"salario",     label:"Salário",              icon:"💰", color:"#10b981"},
-  {id:"aluguel_rec", label:"Aluguel Recebido",      icon:"🏢", color:"#34d399"},
-  {id:"reembolso",   label:"Reembolso de Despesas", icon:"↩️", color:"#6ee7b7"},
-  {id:"investimento",label:"Rendimento Investimento",icon:"📈", color:"#059669"},
-  {id:"outras_rec",  label:"Outras Receitas",       icon:"💡", color:"#a7f3d0"},
+  {id:"salario",     label:"Salário",               icon:"💰", color:"#10b981", subs:[{id:"salario_fixo",label:"Salário fixo"},{id:"bonus",label:"Bônus"},{id:"decimo",label:"13º"},{id:"ferias",label:"Férias"}]},
+  {id:"aluguel_rec", label:"Aluguel Recebido",       icon:"🏢", color:"#10b981"},
+  {id:"investimento",label:"Rendimento Investimento",icon:"📈", color:"#10b981"},
+  {id:"reembolso",   label:"Reembolso de Despesas",  icon:"↩️", color:"#10b981"},
+  {id:"outras_rec",  label:"Outras Receitas",        icon:"💡", color:"#10b981"},
 ];
 const CATS_DESPESA = [
-  {id:"alimentacao_r",  label:"Alimentação Regular",    icon:"🍽️", color:"#10b981"},
-  {id:"alimentacao_nr", label:"Alimentação Não Regular", icon:"🍕", color:"#34d399"},
-  {id:"saude",          label:"Saúde",                   icon:"🏥", color:"#e879f9"},
-  {id:"medicamento",    label:"Medicamento",             icon:"💊", color:"#f472b6"},
-  {id:"educacao",       label:"Educação",                icon:"📚", color:"#a78bfa"},
-  {id:"moradia",        label:"Moradia",                 icon:"🏠", color:"#fde68a"},
-  {id:"transporte",     label:"Transporte",              icon:"🚗", color:"#fbbf24"},
-  {id:"veiculo",        label:"Manutenção Veículo",      icon:"🔧", color:"#fb923c"},
-  {id:"assinatura",     label:"Assinatura",              icon:"📱", color:"#60a5fa"},
-  {id:"limpeza",        label:"Limpeza",                 icon:"🧹", color:"#94a3b8"},
-  {id:"higiene",        label:"Higiene Pessoal",         icon:"🧴", color:"#7dd3fc"},
-  {id:"vestuario",      label:"Vestuário",               icon:"👕", color:"#f9a8d4"},
-  {id:"lazer",          label:"Lazer",                   icon:"🎬", color:"#86efac"},
-  {id:"tecnologia",     label:"Tecnologia",              icon:"💻", color:"#67e8f9"},
-  {id:"papelaria",      label:"Papelaria",               icon:"📝", color:"#d8b4fe"},
-  {id:"dizimo",         label:"Dízimo/Oferta",           icon:"🙏", color:"#f59e0b"},
-  {id:"aporte",         label:"Aporte/Investimento",     icon:"📈", color:"#3b82f6"},
-  {id:"outras",         label:"Outras",                  icon:"📦", color:"#6e7681"},
+  {id:"alimentacao_r",  label:"Alimentação Regular",     icon:"🍽️", color:"#6b7280", subs:[{id:"supermercado",label:"Supermercado"},{id:"feira",label:"Feira"},{id:"padaria",label:"Padaria"}]},
+  {id:"alimentacao_nr", label:"Alimentação Não Regular", icon:"🍕", color:"#6b7280", subs:[{id:"restaurante",label:"Restaurante"},{id:"delivery",label:"Delivery"},{id:"lanche",label:"Lanche"}]},
+  {id:"saude",          label:"Saúde",                   icon:"🏥", color:"#6b7280", subs:[{id:"consulta",label:"Consulta"},{id:"exame",label:"Exame"},{id:"plano_saude",label:"Plano de Saúde"}]},
+  {id:"medicamento",    label:"Medicamento",             icon:"💊", color:"#6b7280"},
+  {id:"educacao",       label:"Educação",                icon:"📚", color:"#6b7280", subs:[{id:"escola",label:"Escola"},{id:"faculdade",label:"Faculdade"},{id:"curso",label:"Curso"},{id:"material",label:"Material"}]},
+  {id:"moradia",        label:"Moradia",                 icon:"🏠", color:"#6b7280", subs:[{id:"aluguel",label:"Aluguel"},{id:"condominio",label:"Condomínio"},{id:"iptu",label:"IPTU"},{id:"manutencao_m",label:"Manutenção"}]},
+  {id:"transporte",     label:"Transporte",              icon:"🚗", color:"#6b7280", subs:[{id:"combustivel",label:"Combustível"},{id:"uber",label:"Uber/99"},{id:"onibus",label:"Ônibus"},{id:"manutencao_t",label:"Manutenção"}]},
+  {id:"doacoes",        label:"Doações",                 icon:"🙏", color:"#6b7280", subs:[{id:"dizimo_s",label:"Dízimo"},{id:"oferta",label:"Oferta"},{id:"subvencao",label:"Subvenção"},{id:"assistencia",label:"Assistência Social"}]},
+  {id:"assinatura",     label:"Assinatura",              icon:"📱", color:"#6b7280", subs:[{id:"streaming",label:"Streaming"},{id:"software",label:"Software"},{id:"app",label:"App"}]},
+  {id:"vestuario",      label:"Vestuário",               icon:"👕", color:"#6b7280"},
+  {id:"higiene",        label:"Higiene/Beleza",          icon:"🧴", color:"#6b7280"},
+  {id:"tecnologia",     label:"Tecnologia",              icon:"💻", color:"#6b7280"},
+  {id:"lazer",          label:"Lazer",                   icon:"🎬", color:"#6b7280"},
+  {id:"aporte",         label:"Aporte/Investimento",     icon:"📈", color:"#6b7280"},
+  {id:"outras",         label:"Outras",                  icon:"📦", color:"#6b7280"},
+];
+// Categorias antigas mantidas apenas para exibição de lançamentos legados
+const LEGACY_CATS = [
+  {id:"veiculo",   label:"Manutenção Veículo", icon:"🔧", color:"#6b7280"},
+  {id:"limpeza",   label:"Limpeza",            icon:"🧹", color:"#6b7280"},
+  {id:"papelaria", label:"Papelaria",          icon:"📝", color:"#6b7280"},
+  {id:"dizimo",    label:"Dízimo/Oferta",      icon:"🙏", color:"#6b7280"},
 ];
 const TODAS_CATS = [...CATS_RECEITA,...CATS_DESPESA];
-const getCat = (id,extra=[]) => [...TODAS_CATS,...extra].find(c=>c.id===id)||{label:"—",icon:"•",color:"#6e7681"};
+const getCat = (id,extra=[]) => [...TODAS_CATS,...LEGACY_CATS,...extra].find(c=>c.id===id)||{label:"—",icon:"•",color:"#6b7280"};
+// Subcategorias de uma categoria (builtin + customizadas via docs {sub:true,parentId})
+const subsDe = (catId,extra=[]) => { const c=TODAS_CATS.find(x=>x.id===catId); return [...((c&&c.subs)||[]),...extra.filter(x=>x.sub&&x.parentId===catId)]; };
 
 const fmt = n => new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(+n||0);
 const fmtDate = d => d ? new Date(d+"T00:00:00").toLocaleDateString("pt-BR") : "";
@@ -93,10 +100,10 @@ function getMonthView(baseItems, lancs, mes, ano, gastosPorCat){
   return pend;
 }
 
-// ─── Estilos base ─────────────────────────────────────────────────────────────
-const PURPLE = "#6c63ff";
+// ─── Estilos base (estilo sóbrio: branco, cinza, preto; cor só para +/-) ──────
+const PURPLE = "#1a1a1a";
 const S = {
-  inp: {background:"#f8f9ff",border:"1.5px solid #e0e0f0",borderRadius:10,padding:"10px 14px",color:"#1f2937",fontSize:13,fontFamily:"inherit",width:"100%",outline:"none"},
+  inp: {background:"#ffffff",border:"1px solid #e5e7eb",borderRadius:8,padding:"10px 14px",color:"#1a1a1a",fontSize:13,fontFamily:"inherit",width:"100%",outline:"none"},
   btn: (bg,c="#fff")=>({background:bg,color:c,border:"none",borderRadius:12,padding:"11px 18px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}),
 };
 
@@ -203,7 +210,7 @@ function LoginScreen({onLogin,existingUser}){
   };
 
   return(
-    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#6c63ff 0%,#a78bfa 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"'Inter','Segoe UI',sans-serif"}}>
+    <div style={{minHeight:"100vh",background:"#1a1a1a",display:"flex",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"'Inter','Segoe UI',sans-serif"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');*{box-sizing:border-box;margin:0;padding:0}input{outline:none;font-family:inherit}`}</style>
       <div style={{background:"#fff",borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:380,boxShadow:"0 24px 80px rgba(0,0,0,0.2)"}}>
         <div style={{textAlign:"center",marginBottom:28}}>
@@ -224,7 +231,7 @@ function LoginScreen({onLogin,existingUser}){
             <Field label="Email"><input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="seu@email.com" style={S.inp} onKeyDown={e=>e.key==="Enter"&&handleAuth()}/></Field>
             <Field label="Senha"><input value={senha} onChange={e=>setSenha(e.target.value)} type="password" placeholder={modo==="criar"?"Mínimo 6 caracteres":"Sua senha"} style={S.inp} onKeyDown={e=>e.key==="Enter"&&handleAuth()}/></Field>
             {err&&<div style={{fontSize:12,color:"#ef4444",marginTop:8,background:"#fef2f2",borderRadius:8,padding:"8px 12px"}}>{err}</div>}
-            <button onClick={handleAuth} disabled={loading} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",marginTop:16,padding:"13px 0",fontSize:14,opacity:loading?.7:1}}>
+            <button onClick={handleAuth} disabled={loading} style={{...S.btn(`${PURPLE}`),width:"100%",marginTop:16,padding:"13px 0",fontSize:14,opacity:loading?.7:1}}>
               {loading?"Aguarde...":(modo==="criar"?"Criar conta":"Entrar")}
             </button>
           </>
@@ -252,7 +259,7 @@ function LoginScreen({onLogin,existingUser}){
             )}
             {modoFam==="entrar"&&<div style={{fontSize:11,color:"#9ca3af",marginTop:-4,marginBottom:4}}>Peça um convite ao responsável pela família (válido 24h, uso único).</div>}
             {err&&<div style={{fontSize:12,color:"#ef4444",marginTop:8,background:"#fef2f2",borderRadius:8,padding:"8px 12px"}}>{err}</div>}
-            <button onClick={handleFamilia} disabled={loading} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",marginTop:16,padding:"13px 0",opacity:loading?.7:1}}>
+            <button onClick={handleFamilia} disabled={loading} style={{...S.btn(`${PURPLE}`),width:"100%",marginTop:16,padding:"13px 0",opacity:loading?.7:1}}>
               {loading?"Aguarde...":(modoFam==="criar"?"Criar família":"Entrar")}
             </button>
           </>
@@ -265,8 +272,6 @@ function LoginScreen({onLogin,existingUser}){
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 function OnboardingScreen({familyCode,onConcluir}){
   const fp=col=>famPath(familyCode,col);
-  const CORES={"C6":"#ef4444","Inter":"#f97316","Caixa":"#3b82f6","XP":"#10b981","Santander":"#8b5cf6"};
-  const [saldos,setSaldos]=useState({"C6":"","Inter":"","Caixa":"","XP":"","Santander":""});
   const [membros,setMembros]=useState([]);
   const [novoMembro,setNovoMembro]=useState("");
   const [err,setErr]=useState("");
@@ -283,11 +288,8 @@ function OnboardingScreen({familyCode,onConcluir}){
     if(membros.length===0){ setErr("Adicione pelo menos 1 membro da família."); return; }
     setLoading(true);
     for(const m of membros){ await setDoc(doc(db,fp("membros"),m.id),{id:m.id,nome:m.nome}); }
-    for(const [id,saldo] of Object.entries(saldos)){
-      if(saldo!==""){
-        await setDoc(doc(db,fp("contas"),id),{id,saldo:+saldo},{merge:true});
-      }
-    }
+    // Conta padrão Carteira (dinheiro físico); demais contas são cadastradas em Perfil
+    await setDoc(doc(db,fp("contas"),"carteira"),{id:"carteira",nome:"Carteira",tipo:"carteira",cor:"#f59e0b",saldoInicial:0},{merge:true});
     // Marca onboarding como concluído
     await setDoc(doc(db,`familias/${familyCode}`),{onboardingConcluido:true},{merge:true});
     setLoading(false);
@@ -295,7 +297,7 @@ function OnboardingScreen({familyCode,onConcluir}){
   };
 
   return(
-    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#6c63ff 0%,#a78bfa 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"'Inter','Segoe UI',sans-serif"}}>
+    <div style={{minHeight:"100vh",background:"#1a1a1a",display:"flex",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"'Inter','Segoe UI',sans-serif"}}>
       <div style={{background:"#fff",borderRadius:24,padding:"32px 24px",width:"100%",maxWidth:400,boxShadow:"0 24px 80px rgba(0,0,0,0.2)"}}>
         <div style={{textAlign:"center",marginBottom:24}}>
           <div style={{fontSize:40,marginBottom:8}}>👋</div>
@@ -308,7 +310,7 @@ function OnboardingScreen({familyCode,onConcluir}){
           <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:8,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>👥 Membros da família</label>
           <div style={{display:"flex",gap:8,marginBottom:10}}>
             <input value={novoMembro} onChange={e=>setNovoMembro(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addMembro()} placeholder="Nome (ex: Alexandre)" style={S.inp}/>
-            <button type="button" onClick={addMembro} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),padding:"0 18px",fontSize:18,flexShrink:0}}>+</button>
+            <button type="button" onClick={addMembro} style={{...S.btn(`${PURPLE}`),padding:"0 18px",fontSize:18,flexShrink:0}}>+</button>
           </div>
           {membros.length===0
             ? <div style={{fontSize:12,color:"#9ca3af",padding:"2px 0 0 2px"}}>Adicione pelo menos 1 membro.</div>
@@ -322,35 +324,13 @@ function OnboardingScreen({familyCode,onConcluir}){
         </div>
 
         <div style={{height:1,background:"#f0f0f5",margin:"4px 0 16px"}}/>
-        <div style={{fontSize:13,fontWeight:800,color:"#374151",marginBottom:12}}>🏦 Saldo inicial das contas <span style={{fontWeight:600,color:"#9ca3af"}}>(opcional)</span></div>
-
-        {CONTAS_LISTA.map(id=>{
-          const cor=CORES[id]||PURPLE;
-          return(
-            <div key={id} style={{marginBottom:12}}>
-              <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:4,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>
-                <span style={{color:cor}}>●</span> {id}
-              </label>
-              <div style={{position:"relative"}}>
-                <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:13,color:"#9ca3af",fontWeight:600}}>R$</span>
-                <input
-                  type="number"
-                  value={saldos[id]}
-                  onChange={e=>setSaldos(p=>({...p,[id]:e.target.value}))}
-                  placeholder="0,00"
-                  style={{...S.inp,paddingLeft:36,borderColor:saldos[id]?cor:"#e0e0f0"}}
-                />
-              </div>
-            </div>
-          );
-        })}
+        <div style={{background:"#f8f9fa",border:"1px solid #e5e7eb",borderRadius:10,padding:"12px 14px",fontSize:12,color:"#6b7280",marginBottom:8,lineHeight:1.6}}>
+          👛 Criaremos a conta <strong>Carteira</strong> (dinheiro físico) automaticamente. Cadastre suas contas bancárias e cartões depois em <strong>👤 Perfil → Contas e Cartões</strong>.
+        </div>
 
         {err&&<div style={{fontSize:12,color:"#ef4444",marginTop:6,marginBottom:4,background:"#fef2f2",borderRadius:8,padding:"8px 12px"}}>{err}</div>}
-        <button onClick={handleConcluir} disabled={loading} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",padding:"13px 0",fontSize:14,marginTop:8,opacity:loading?.7:1}}>
+        <button onClick={handleConcluir} disabled={loading} style={{...S.btn(PURPLE),width:"100%",padding:"13px 0",fontSize:14,marginTop:8,opacity:loading?.7:1}}>
           {loading?"Salvando...":"✓ Começar a usar"}
-        </button>
-        <button onClick={handleConcluir} disabled={loading} style={{width:"100%",background:"none",border:"none",color:"#9ca3af",fontSize:13,fontWeight:600,marginTop:10,cursor:"pointer",padding:"8px 0"}}>
-          Pular saldos (membros obrigatórios) →
         </button>
       </div>
     </div>
@@ -381,7 +361,7 @@ export default function App(){
   };
   const handleLogout=async()=>{await signOut(auth);setFamilyCode(null);localStorage.removeItem("sl2_family");setOnboarding(false);};
 
-  if(!authReady) return <div style={{background:"linear-gradient(135deg,#6c63ff,#a78bfa)",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontFamily:"Inter,sans-serif",fontSize:16,fontWeight:700}}>💚 Carregando...</div>;
+  if(!authReady) return <div style={{background:"#1a1a1a",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontFamily:"Inter,sans-serif",fontSize:16,fontWeight:700}}>💚 Carregando...</div>;
   if(!user||!familyCode) return <LoginScreen onLogin={handleLogin} existingUser={user}/>;
   if(onboarding) return <OnboardingScreen familyCode={familyCode} onConcluir={()=>setOnboarding(false)}/>;
   return <MainApp familyCode={familyCode} user={user} onLogout={handleLogout}/>;
@@ -396,6 +376,7 @@ function MainApp({familyCode,user,onLogout}){
   const [baseItems,setBaseItems]=useState([]);
   const [customCats,setCustomCats]=useState([]);
   const [contas,setContas]=useState([]);
+  const [cartoes,setCartoes]=useState([]);
   const [investimentos,setInvestimentos]=useState([]);
   const [membros,setMembros]=useState([]);
   const [config,setConfig]=useState({});
@@ -414,7 +395,6 @@ function MainApp({familyCode,user,onLogout}){
   const toast2=(msg,ok=true)=>{setToast({msg,ok});setTimeout(()=>setToast(null),2600);};
   const nomesMembros=membros.map(m=>m.nome).filter(Boolean);
   const diaFechamento=+config.diaFechamento||31;
-  const vencimentos=config.vencimentos||{};
 
   useEffect(()=>{
     const fp=col=>famPath(familyCode,col);
@@ -423,6 +403,7 @@ function MainApp({familyCode,user,onLogout}){
       onSnapshot(collection(db,fp("baseItems")),s=>setBaseItems(s.docs.map(d=>({id:d.id,...d.data()})))),
       onSnapshot(collection(db,fp("categorias")),s=>setCustomCats(s.docs.map(d=>({id:d.id,...d.data()})))),
       onSnapshot(collection(db,fp("contas")),s=>setContas(s.docs.map(d=>({id:d.id,...d.data()})))),
+      onSnapshot(collection(db,fp("cartoes")),s=>setCartoes(s.docs.map(d=>({id:d.id,...d.data()})))),
       onSnapshot(collection(db,fp("investimentos")),s=>setInvestimentos(s.docs.map(d=>({id:d.id,...d.data()})))),
       onSnapshot(collection(db,fp("membros")),s=>setMembros(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.nome||"").localeCompare(b.nome||"")))),
       onSnapshot(doc(db,"familias",familyCode),s=>setConfig(s.data()||{})),
@@ -433,10 +414,35 @@ function MainApp({familyCode,user,onLogout}){
     return()=>unsubs.forEach(u=>u());
   },[familyCode]);
 
+  // Garante a conta padrão "👛 Carteira" (dinheiro físico)
+  const carteiraSeeded=useRef(false);
+  useEffect(()=>{
+    if(loading||carteiraSeeded.current) return;
+    if(contas.length>0&&!contas.some(c=>c.tipo==="carteira"||c.id==="carteira")){
+      carteiraSeeded.current=true;
+      setDoc(doc(db,famPath(familyCode,"contas"),"carteira"),{id:"carteira",nome:"Carteira",tipo:"carteira",cor:"#f59e0b",saldoInicial:0},{merge:true});
+    }
+  },[loading,contas,familyCode]);
+
   // ── CRUD ──────────────────────────────────────────────────────────────────
   const saveLanc=async(data)=>{
     const {id,...rest}=data;
+    // Compra parcelada no cartão: cria um lançamento por parcela, da atual até a última
+    if(!id&&rest.tipo==="cartao"&&(+rest.parcelas||1)>1){
+      const n=Math.max(1,+rest.parcelas||1);
+      const pa=Math.min(Math.max(1,+rest.parcelaAtual||1),n);
+      const vp=Math.round(((+rest.valor||0)/n)*100)/100;
+      const base=Date.now();
+      const ops=[];
+      for(let p=pa;p<=n;p++){
+        const off=p-pa; const r=addM(+rest.mes,+rest.ano,off);
+        ops.push(setDoc(doc(db,fp("lancamentos"),String(base+off)),{...rest,desc:`${rest.desc} (${p}/${n})`,valor:vp,parcela:`${p}/${n}`,mes:r.mes,ano:r.ano,mesFatura:r.mes,anoFatura:r.ano,updatedAt:base+off}));
+      }
+      await Promise.all(ops);
+      toast2(`${n-pa+1} parcela(s) lançada(s)!`); setModal(null); return;
+    }
     const entry={...rest,valor:+rest.valor||0,updatedAt:Date.now()};
+    if(entry.tipo==="cartao"){ entry.mesFatura=entry.mesFatura??entry.mes; entry.anoFatura=entry.anoFatura??entry.ano; }
     await setDoc(doc(db,fp("lancamentos"),id||String(Date.now())),entry);
     toast2(id?"Atualizado!":"Lançamento salvo!"); setModal(null);
   };
@@ -453,13 +459,7 @@ function MainApp({familyCode,user,onLogout}){
   const importarLancamentos=async(arr,meta={})=>{
     const base=Date.now();
     await Promise.all(arr.map((l,i)=>setDoc(doc(db,fp("lancamentos"),String(base+i)),{...l,updatedAt:base+i})));
-    // Conta corrente: atualiza saldo = saldoAtual + entradas - saidas
-    if(meta.contexto==="conta"&&meta.contaId&&Number.isFinite(meta.delta)&&meta.delta!==0){
-      const c=contas.find(x=>x.id===meta.contaId);
-      const atual=c?+c.saldo||0:0;
-      await setDoc(doc(db,fp("contas"),meta.contaId),{id:meta.contaId,saldo:atual+meta.delta,updatedAt:Date.now()},{merge:true});
-    }
-    // Pagamento de fatura: marca fatura do cartão como paga
+    // Saldos de conta e dívidas de cartão são derivados dos lançamentos — nada a ajustar manualmente.
     if(meta.faturasPagas&&meta.faturasPagas.length){
       await Promise.all(meta.faturasPagas.map(f=>setDoc(doc(db,fp("faturasPagas"),`${f.cartao}-${f.mes}-${f.ano}`),{cartao:f.cartao,mes:f.mes,ano:f.ano,valor:f.valor,pago:true,data:Date.now()},{merge:true})));
     }
@@ -516,28 +516,45 @@ function MainApp({familyCode,user,onLogout}){
       membro:p.membro||nomesMembros[0]||"", status:"confirmado", _baseId:p._baseId,
       mes:viewMes, ano:viewAno, data:todayStr(), updatedAt:Date.now(),
     };
-    if(tm.lancTipo==="cartao"){ entry.cartao=p.cartao||CARTOES_LISTA[0]; entry.mesFatura=viewMes; entry.anoFatura=viewAno; entry.parcelas=1; }
+    if(tm.lancTipo==="cartao"){ entry.cartao=p.cartao||nomesCartoes[0]||""; entry.mesFatura=viewMes; entry.anoFatura=viewAno; entry.parcelas=1; }
     await setDoc(doc(db,fp("lancamentos"),String(Date.now())),entry);
     toast2("Confirmado!"); setModal(null);
   };
-  const saveContaSaldo=async(contaId,saldo)=>{
-    const valor=Number(saldo);
-    if(!Number.isFinite(valor)) return;
-    await setDoc(doc(db,fp("contas"),contaId),{id:contaId,saldo:valor,updatedAt:Date.now()},{merge:true});
-    toast2(`Saldo de ${contaId} salvo!`);
+  const saveSaldoInicial=async(contaId,valor)=>{
+    const v=Number(valor);
+    if(!Number.isFinite(v)) return;
+    await setDoc(doc(db,fp("contas"),contaId),{saldoInicial:v,saldo:null,updatedAt:Date.now()},{merge:true});
+    toast2("Saldo inicial salvo!");
   };
+  const saveConta=async(d)=>{
+    const id=d.id||String(Date.now());
+    await setDoc(doc(db,fp("contas"),id),{id,nome:(d.nome||"").trim(),tipo:d.tipo||"banco",cor:d.cor||"#1a1a1a",saldoInicial:+d.saldoInicial||0},{merge:true});
+    toast2(d.id?"Conta atualizada!":"Conta adicionada!");
+  };
+  const deleteConta=async(id)=>{await deleteDoc(doc(db,fp("contas"),String(id)));toast2("Conta removida.");};
+  const saveCartao=async(d)=>{
+    const id=d.id||String(Date.now());
+    await setDoc(doc(db,fp("cartoes"),id),{id,nome:(d.nome||"").trim(),bandeira:d.bandeira||"",limite:+d.limite||0,vencimento:Math.max(1,Math.min(31,+d.vencimento||25))},{merge:true});
+    toast2(d.id?"Cartão atualizado!":"Cartão adicionado!");
+  };
+  const deleteCartao=async(id)=>{await deleteDoc(doc(db,fp("cartoes"),String(id)));toast2("Cartão removido.");};
+  const saveCategoria=async(d)=>{
+    const id=d.id||("custom_"+Date.now());
+    await setDoc(doc(db,fp("categorias"),id),{...d,id,custom:true});
+    toast2("Categoria salva!");
+  };
+  const deleteCategoria=async(id)=>{await deleteDoc(doc(db,fp("categorias"),String(id)));toast2("Categoria removida.");};
   const saveTransferencia=async(data)=>{
     const id=String(Date.now());
-    const {contaOrigem,contaDestino,valor,desc,data:dt,mes,ano}=data;
-    // Saída da conta origem
-    await setDoc(doc(db,fp("lancamentos"),id+"_s"),{tipo:"saida",desc:desc||`Transferência → ${contaDestino}`,valor:+valor,contaId:contaOrigem,formaPag:"TED/DOC",catId:"outras",mes:+mes,ano:+ano,data:dt,membro:nomesMembros[0]||"",status:"confirmado",updatedAt:Date.now()});
-    // Entrada na conta destino
-    await setDoc(doc(db,fp("lancamentos"),id+"_e"),{tipo:"entrada",desc:desc||`Transferência ← ${contaOrigem}`,valor:+valor,contaId:contaDestino,formaPag:"TED/DOC",catId:"outras_rec",mes:+mes,ano:+ano,data:dt,membro:nomesMembros[0]||"",status:"confirmado",updatedAt:Date.now()});
-    // Atualiza saldos
-    const co=contas.find(c=>c.id===contaOrigem);
-    const cd=contas.find(c=>c.id===contaDestino);
-    if(co) await saveContaSaldo(contaOrigem,(+co.saldo||0)-(+valor));
-    if(cd) await saveContaSaldo(contaDestino,(+cd.saldo||0)+(+valor));
+    const {contaOrigem,contaDestino,valor,desc,data:dt,mes,ano,tipo}=data;
+    if(tipo==="fatura"){
+      // Pagamento de fatura: debita a conta e reduz a dívida do cartão (campo cartaoFatura)
+      await setDoc(doc(db,fp("lancamentos"),id),{tipo:"saida",desc:desc||`Pagamento fatura ${contaDestino}`,valor:+valor,contaId:contaOrigem,formaPag:"Pagamento fatura",catId:"outras",mes:+mes,ano:+ano,data:dt,membro:nomesMembros[0]||"",status:"confirmado",pagamentoFatura:true,cartaoFatura:contaDestino,updatedAt:Date.now()});
+      toast2("Pagamento de fatura registrado!"); setModal(null); return;
+    }
+    // Transferência: debita origem e credita destino (saldo é derivado dos lançamentos)
+    await setDoc(doc(db,fp("lancamentos"),id+"_s"),{tipo:"saida",desc:desc||`Transferência → ${contaDestino}`,valor:+valor,contaId:contaOrigem,formaPag:"TED/DOC",catId:"outras",mes:+mes,ano:+ano,data:dt,membro:nomesMembros[0]||"",status:"confirmado",transfId:id,updatedAt:Date.now()});
+    await setDoc(doc(db,fp("lancamentos"),id+"_e"),{tipo:"entrada",desc:desc||`Transferência ← ${contaOrigem}`,valor:+valor,contaId:contaDestino,formaPag:"TED/DOC",catId:"outras_rec",mes:+mes,ano:+ano,data:dt,membro:nomesMembros[0]||"",status:"confirmado",transfId:id,updatedAt:Date.now()});
     toast2("Transferência registrada!"); setModal(null);
   };
   const saveInvest=async(data)=>{
@@ -567,11 +584,24 @@ function MainApp({familyCode,user,onLogout}){
 
   const totalEntradas=confirmados.filter(l=>l.tipo==="entrada").reduce((s,l)=>s+(+l.valor||0),0);
   const totalSaidas=confirmados.filter(l=>l.tipo==="saida").reduce((s,l)=>s+(+l.valor||0),0);
-  const totalCartao=lancs.filter(l=>l.tipo==="cartao"&&l.mesFatura===viewMes&&l.anoFatura===viewAno).reduce((s,l)=>s+(+l.valor||0),0);
-  const totalDizimo=confirmados.filter(l=>l.catId==="dizimo").reduce((s,l)=>s+(+l.valor||0),0);
-  const totalPrevistas=previstasPendentes.reduce((s,p)=>s+p.restante,0);
-  const totalContas=CONTAS_LISTA.reduce((s,c)=>{const ct=contas.find(x=>x.id===c);return s+(ct?+ct.saldo||0:0);},0);
-  const saldoLivre=totalContas-totalCartao-totalPrevistas;
+  const totalDoacoes=confirmados.filter(l=>l.catId==="doacoes"||l.catId==="dizimo").reduce((s,l)=>s+(+l.valor||0),0);
+  // Fluxo financeiro integrado: saldo derivado dos lançamentos (saldoInicial + entradas − saídas)
+  const contasComSaldo=contas.map(c=>{
+    const ini=c.saldoInicial!=null?+c.saldoInicial:(+c.saldo||0); // legado: campo "saldo" vira saldo inicial
+    const ent=lancs.filter(l=>l.status==="confirmado"&&l.contaId===c.id&&l.tipo==="entrada").reduce((s,l)=>s+(+l.valor||0),0);
+    const sai=lancs.filter(l=>l.status==="confirmado"&&l.contaId===c.id&&l.tipo==="saida").reduce((s,l)=>s+(+l.valor||0),0);
+    return {...c,nome:c.nome||c.id,saldoAtual:ini+ent-sai};
+  });
+  const totalContas=contasComSaldo.reduce((s,c)=>s+c.saldoAtual,0);
+  // Cartão = dívida acumulada: compras (todas as faturas) − pagamentos de fatura
+  const nomesCartoes=cartoes.length?cartoes.map(c=>c.nome):[...new Set(lancs.filter(l=>l.tipo==="cartao"&&l.cartao).map(l=>l.cartao))];
+  const dividasCartoes=nomesCartoes.map(n=>{
+    const compras=lancs.filter(l=>l.tipo==="cartao"&&(l.cartao||"")===n).reduce((s,l)=>s+(+l.valor||0),0);
+    const pagos=lancs.filter(l=>l.tipo==="saida"&&l.pagamentoFatura&&l.cartaoFatura===n&&l.status==="confirmado").reduce((s,l)=>s+(+l.valor||0),0);
+    return {nome:n,divida:Math.max(0,compras-pagos)};
+  });
+  const totalDividas=dividasCartoes.reduce((s,d)=>s+d.divida,0);
+  const saldoLivre=totalContas-totalDividas;
 
   const totalInvestido=investimentos.reduce((s,i)=>s+(+i.saldoAtual||0),0);
 
@@ -581,7 +611,7 @@ function MainApp({familyCode,user,onLogout}){
   const ultimoDiaMes=new Date(viewAno,viewMes+1,0).getDate();
   const diasAteDia=(dia)=>{ const d=Math.max(1,Math.min(+dia||31,ultimoDiaMes)); if(!isNow) return d; return now.getDate()<=d?Math.max(1,d-now.getDate()):Math.max(1,Math.ceil((new Date(viewAno,viewMes+1,d)-now)/86400000)); };
   const diasFim=diasAteDia(diaFechamento);
-  const diasVenc=Math.min(...CARTOES_LISTA.map(c=>diasAteDia(+(vencimentos[c]||25))));
+  const diasVenc=Math.min(...(cartoes.length?cartoes.map(c=>diasAteDia(+c.vencimento||25)):[diasAteDia(25)]));
   const saldoProximo=saldoLivre; // simplificado
   const vpdVista=saldoLivre/Math.max(1,diasFim);
   const vpdCartao=saldoProximo/Math.max(1,diasVenc);
@@ -629,36 +659,32 @@ function MainApp({familyCode,user,onLogout}){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[loading,analises,lancs]);
 
-  if(loading) return <div style={{background:"linear-gradient(135deg,#6c63ff,#a78bfa)",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontFamily:"Inter,sans-serif",fontSize:16,fontWeight:700}}>💚 Carregando...</div>;
+  if(loading) return <div style={{background:"#1a1a1a",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontFamily:"Inter,sans-serif",fontSize:16,fontWeight:700}}>💚 Carregando...</div>;
 
   return(
-    <div style={{minHeight:"100vh",background:"#f0f4ff",fontFamily:"'Inter','Segoe UI',sans-serif",color:"#1f2937",paddingBottom:80,maxWidth:480,margin:"0 auto"}}>
+    <div style={{minHeight:"100vh",background:"#f8f9fa",fontFamily:"'Inter','Segoe UI',sans-serif",color:"#1f2937",paddingBottom:80,maxWidth:480,margin:"0 auto"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');*{box-sizing:border-box;margin:0;padding:0}input,select,button{font-family:inherit;outline:none}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#c7d2fe;border-radius:4px}.hover-card:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,0,0,0.1)!important;transition:all .2s}`}</style>
 
       {toast&&<Toast msg={toast.msg} ok={toast.ok}/>}
 
       {/* Modais */}
-      {modal?.tipo==="lancamento"&&<LancForm data={modal.data} onSave={saveLanc} onClose={()=>setModal(null)} allCats={allCats} viewMes={viewMes} viewAno={viewAno} onImportNFe={importNFe} membros={nomesMembros}/>}
-      {modal?.tipo==="base"&&<BaseForm data={modal.data} onSave={saveBase} onClose={()=>setModal(null)} allCats={allCats} membros={nomesMembros}/>}
+      {modal?.tipo==="lancamento"&&<LancForm data={modal.data} onSave={saveLanc} onClose={()=>setModal(null)} allCats={allCats} customCats={customCats} viewMes={viewMes} viewAno={viewAno} onImportNFe={importNFe} membros={nomesMembros} contas={contasComSaldo} cartoesNomes={nomesCartoes}/>}
+      {modal?.tipo==="base"&&<BaseForm data={modal.data} onSave={saveBase} onClose={()=>setModal(null)} allCats={allCats} membros={nomesMembros} cartoesNomes={nomesCartoes}/>}
       {modal?.tipo==="confirmarPendente"&&<ConfirmPendenteModal pendente={modal.data} onConfirm={v=>confirmarPendente(modal.data,v)} onClose={()=>setModal(null)}/>}
-      {modal?.tipo==="transferencia"&&<TransfForm data={modal.data} onSave={saveTransferencia} onClose={()=>setModal(null)} contas={contas} viewMes={viewMes} viewAno={viewAno}/>}
+      {modal?.tipo==="transferencia"&&<TransfForm data={modal.data} onSave={saveTransferencia} onClose={()=>setModal(null)} contas={contasComSaldo} cartoesNomes={nomesCartoes} dividas={dividasCartoes} viewMes={viewMes} viewAno={viewAno}/>}
       {modal?.tipo==="investimento"&&<InvestForm data={modal.data} onSave={saveInvest} onClose={()=>setModal(null)}/>}
       {modal?.tipo==="relatorioIR"&&<RelatorioIR lancs={lancs} onClose={()=>setModal(null)}/>}
       {consultorOpen&&<ConsultorFinanceiro analises={analises} atualId={`${viewMes}-${viewAno}`} mesLabel={`${MESES[viewMes]} ${viewAno}`} loading={consultorLoading} erro={consultorErro} onGerar={()=>gerarAnalise(viewMes,viewAno)} onClose={()=>setConsultorOpen(false)}/>}
       {modal?.tipo==="reset"&&<ResetModal onConfirm={resetarDados} onClose={()=>setModal(null)}/>}
-      {modal?.tipo==="importarExtrato"&&<ImportarExtrato contexto={modal.data.contexto} membros={nomesMembros} onImport={importarLancamentos} onClose={()=>setModal(null)} viewMes={viewMes} viewAno={viewAno}/>}
+      {modal?.tipo==="importarExtrato"&&<ImportarExtrato contexto={modal.data.contexto} membros={nomesMembros} onImport={importarLancamentos} onClose={()=>setModal(null)} viewMes={viewMes} viewAno={viewAno} contas={contasComSaldo} cartoesNomes={nomesCartoes}/>}
 
       {/* INÍCIO */}
       {tab==="inicio"&&(
         <>
           {/* Header */}
-          <div style={{background:`linear-gradient(135deg,${PURPLE} 0%,#a78bfa 100%)`,padding:"24px 20px 48px",borderRadius:"0 0 32px 32px",position:"relative",overflow:"hidden"}}>
-            <div style={{position:"absolute",top:-40,right:-40,width:160,height:160,background:"rgba(255,255,255,0.08)",borderRadius:"50%"}}/>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:mostrarBadge?12:20,position:"relative",zIndex:1}}>
-              <div>
-                <div style={{color:"rgba(255,255,255,0.75)",fontSize:13,fontWeight:500}}>Olá,</div>
-                <div style={{color:"#fff",fontSize:20,fontWeight:900}}>{user?.email?.split("@")[0]} 👋</div>
-              </div>
+          <div style={{background:"#1a1a1a",padding:"14px 16px 18px",borderRadius:"0 0 16px 16px",position:"relative"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:mostrarBadge?8:10,position:"relative",zIndex:1}}>
+              <div style={{color:"#fff",fontSize:15,fontWeight:800}}>{user?.email?.split("@")[0]}</div>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                 <button onClick={abrirConsultor} style={{position:"relative",background:"rgba(255,255,255,0.15)",border:"none",borderRadius:50,height:38,padding:"0 14px",cursor:"pointer",color:"#fff",fontSize:13,fontWeight:800,display:"flex",alignItems:"center",gap:6}}>
                   🤖 Consultor
@@ -672,28 +698,28 @@ function MainApp({familyCode,user,onLogout}){
                 📊 Nova análise disponível
               </div>
             )}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:16,marginBottom:16,position:"relative",zIndex:1}}>
-              <button onClick={()=>{const r=addM(viewMes,viewAno,-1);setViewMes(r.mes);setViewAno(r.ano);}} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",width:32,height:32,borderRadius:"50%",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
-              <div style={{color:"#fff",fontSize:17,fontWeight:700}}>{MESES[viewMes]} {viewAno}</div>
-              <button onClick={()=>{const r=addM(viewMes,viewAno,1);setViewMes(r.mes);setViewAno(r.ano);}} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",width:32,height:32,borderRadius:"50%",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:8,position:"relative",zIndex:1}}>
+              <button onClick={()=>{const r=addM(viewMes,viewAno,-1);setViewMes(r.mes);setViewAno(r.ano);}} style={{background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+              <div style={{color:"#fff",fontSize:14,fontWeight:700}}>{MESES[viewMes]} {viewAno}</div>
+              <button onClick={()=>{const r=addM(viewMes,viewAno,1);setViewMes(r.mes);setViewAno(r.ano);}} style={{background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
             </div>
             <div style={{textAlign:"center",position:"relative",zIndex:1}}>
-              <div style={{color:"rgba(255,255,255,0.7)",fontSize:11,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600}}>Saldo Livre</div>
-              <div style={{color:"#fff",fontSize:42,fontWeight:900,letterSpacing:"-1px",margin:"4px 0 2px"}}>{fmt(saldoLivre)}</div>
-              <div style={{color:"rgba(255,255,255,0.6)",fontSize:12}}>💚 disponível este mês</div>
+              <div style={{color:"rgba(255,255,255,0.6)",fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600}}>Saldo Livre</div>
+              <div style={{color:saldoLivre>=0?"#10b981":"#ef4444",fontSize:30,fontWeight:900,letterSpacing:"-0.5px",margin:"2px 0"}}>{fmt(saldoLivre)}</div>
+              <div style={{color:"rgba(255,255,255,0.45)",fontSize:11}}>contas + carteira − dívidas de cartão</div>
             </div>
           </div>
 
           <div style={{padding:"0 16px"}}>
             {/* Cards rápidos */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:-28,marginBottom:20}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:12,marginBottom:20}}>
               {[
                 {icon:"💰",label:"Entradas",val:totalEntradas,color:"#10b981",bg:"#d1fae5"},
                 {icon:"💸",label:"Saídas",val:totalSaidas,color:"#ef4444",bg:"#fee2e2"},
-                {icon:"💳",label:"Cartões",val:totalCartao,color:"#f97316",bg:"#ffedd5"},
-                {icon:"🙏",label:"Dízimo",val:totalDizimo,color:"#f59e0b",bg:"#fef3c7"},
+                {icon:"💳",label:"Dívida cartões",val:totalDividas,color:"#ef4444",bg:"#f3f4f6"},
+                {icon:"🙏",label:"Doações",val:totalDoacoes,color:"#6b7280",bg:"#f3f4f6"},
               ].map(({icon,label,val,color,bg})=>(
-                <div key={label} className="hover-card" style={{background:"#fff",borderRadius:20,padding:"14px 14px",boxShadow:"0 4px 16px rgba(0,0,0,0.07)"}}>
+                <div key={label} className="hover-card" style={{background:"#fff",borderRadius:20,padding:"14px 14px",border:"1px solid #e5e7eb"}}>
                   <div style={{width:34,height:34,borderRadius:12,background:bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,marginBottom:10}}>{icon}</div>
                   <div style={{fontSize:10,color:"#9ca3af",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:3}}>{label}</div>
                   <div style={{fontSize:16,fontWeight:900,color}}>{fmt(val)}</div>
@@ -729,7 +755,7 @@ function MainApp({familyCode,user,onLogout}){
                   {label:"💵 À vista / dia",val:vpdVista,sub:`÷ ${diasFim} dias`,semana:vpdVista*7,color:"#10b981"},
                   {label:"💳 Cartão / dia",val:vpdCartao,sub:`÷ ${diasVenc} dias`,semana:vpdCartao*7,color:"#f97316"},
                 ].map(({label,val,sub,semana,color})=>(
-                  <div key={label} style={{background:"#fff",borderRadius:16,padding:"14px",boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
+                  <div key={label} style={{background:"#fff",borderRadius:16,padding:"14px",border:"1px solid #e5e7eb"}}>
                     <div style={{fontSize:10,color:"#9ca3af",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>{label}</div>
                     <div style={{fontSize:20,fontWeight:900,color:val>=0?color:"#ef4444"}}>{fmt(val)}</div>
                     <div style={{fontSize:10,color:"#9ca3af",marginTop:3}}>{sub}</div>
@@ -759,7 +785,7 @@ function MainApp({familyCode,user,onLogout}){
                     const c=getCat(catId,customCats);
                     const pct=total>0?Math.round(valor/total*100):0;
                     return(
-                      <div key={catId} style={{background:"#fff",borderRadius:12,padding:"10px 12px",marginBottom:6,boxShadow:"0 2px 6px rgba(0,0,0,0.04)"}}>
+                      <div key={catId} style={{background:"#fff",borderRadius:12,padding:"10px 12px",marginBottom:6,border:"1px solid #e5e7eb"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                           <div style={{fontSize:12,fontWeight:700,color:"#374151"}}>{c.icon} {c.label}</div>
                           <div style={{fontSize:12,fontWeight:900,color:c.color}}>{fmt(valor)}</div>
@@ -784,7 +810,7 @@ function MainApp({familyCode,user,onLogout}){
                 const c=getCat(l.catId,customCats);
                 const isEntrada=l.tipo==="entrada";
                 return(
-                  <div key={l.id} style={{background:"#fff",borderRadius:12,padding:"10px 12px",marginBottom:6,boxShadow:"0 2px 6px rgba(0,0,0,0.04)",display:"flex",alignItems:"center",gap:10}}>
+                  <div key={l.id} style={{background:"#fff",borderRadius:12,padding:"10px 12px",marginBottom:6,border:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:10}}>
                     <div style={{width:38,height:38,borderRadius:12,background:c.color+"20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{c.icon}</div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:12,fontWeight:700,color:"#1f2937",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.desc}</div>
@@ -809,38 +835,38 @@ function MainApp({familyCode,user,onLogout}){
 
       {/* CARTÕES */}
       {tab==="cartoes"&&(
-        <TabCartoes lancs={lancs} viewMes={viewMes} viewAno={viewAno} setViewMes={setViewMes} setViewAno={setViewAno} customCats={customCats} allCats={allCats} onEdit={l=>setModal({tipo:"lancamento",data:{...l,tipo:"cartao"}})} onDelete={deleteLanc} onNovaCompra={()=>setModal({tipo:"lancamento",data:{tipo:"cartao",mes:viewMes,ano:viewAno}})} onImportar={()=>setModal({tipo:"importarExtrato",data:{contexto:"cartao"}})}/>
+        <TabCartoes lancs={lancs} viewMes={viewMes} viewAno={viewAno} setViewMes={setViewMes} setViewAno={setViewAno} customCats={customCats} allCats={allCats} onEdit={l=>setModal({tipo:"lancamento",data:{...l,tipo:"cartao"}})} onDelete={deleteLanc} onNovaCompra={()=>setModal({tipo:"lancamento",data:{tipo:"cartao",mes:viewMes,ano:viewAno}})} onImportar={()=>setModal({tipo:"importarExtrato",data:{contexto:"cartao"}})} cartoesNomes={nomesCartoes} dividas={dividasCartoes}/>
       )}
 
       {/* CONTAS */}
       {tab==="contas"&&(
-        <TabContas contas={contas} lancs={lancs} viewMes={viewMes} viewAno={viewAno} setViewMes={setViewMes} setViewAno={setViewAno} onAjustarSaldo={saveContaSaldo} onTransferencia={()=>setModal({tipo:"transferencia",data:{}})} onPagarFatura={()=>setModal({tipo:"transferencia",data:{tipo:"fatura"}})} onImportar={()=>setModal({tipo:"importarExtrato",data:{contexto:"conta"}})} customCats={customCats}/>
+        <TabContas contas={contasComSaldo} lancs={lancs} viewMes={viewMes} viewAno={viewAno} setViewMes={setViewMes} setViewAno={setViewAno} onSaldoInicial={saveSaldoInicial} onTransferencia={()=>setModal({tipo:"transferencia",data:{}})} onPagarFatura={()=>setModal({tipo:"transferencia",data:{tipo:"fatura"}})} onImportar={()=>setModal({tipo:"importarExtrato",data:{contexto:"conta"}})} customCats={customCats}/>
       )}
 
       {/* INVESTIMENTOS */}
       {tab==="investimentos"&&(
-        <TabInvestimentos investimentos={investimentos} totalInvestido={totalInvestido} onNovo={()=>setModal({tipo:"investimento",data:{}})} onEdit={i=>setModal({tipo:"investimento",data:i})} onDelete={deleteInvest} onRelatorioIR={()=>setModal({tipo:"relatorioIR",data:{}})}/>
+        <TabInvestimentos investimentos={investimentos} totalInvestido={totalInvestido} onNovo={()=>setModal({tipo:"investimento",data:{}})} onEdit={i=>setModal({tipo:"investimento",data:i})} onDelete={deleteInvest}/>
       )}
 
       {/* CONFIGURAÇÕES */}
       {tab==="config"&&(
-        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} membros={membros} onAddMembro={saveMembro} onDelMembro={deleteMembro} config={config} onSaveConfig={saveConfigFin} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout} onReset={()=>setModal({tipo:"reset"})} onLimparDup={limparDuplicatas} convites={convites} onConvidar={criarConvite} onCancelarConvite={cancelarConvite}/>
+        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} membros={membros} onAddMembro={saveMembro} onDelMembro={deleteMembro} config={config} onSaveConfig={saveConfigFin} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout} onReset={()=>setModal({tipo:"reset"})} onLimparDup={limparDuplicatas} convites={convites} onConvidar={criarConvite} onCancelarConvite={cancelarConvite} contas={contasComSaldo} cartoes={cartoes} onSaveConta={saveConta} onDeleteConta={deleteConta} onSaveCartao={saveCartao} onDeleteCartao={deleteCartao} onSaveCategoria={saveCategoria} onDeleteCategoria={deleteCategoria} onRelatorioIR={()=>setModal({tipo:"relatorioIR",data:{}})}/>
       )}
 
       {/* FAB */}
       {["inicio","gastos","cartoes"].includes(tab)&&(
-        <button onClick={()=>setModal({tipo:"lancamento",data:{mes:viewMes,ano:viewAno,tipo:tab==="cartoes"?"cartao":"saida"}})} style={{position:"fixed",bottom:72,right:"calc(50% - 224px)",width:52,height:52,background:`linear-gradient(135deg,${PURPLE},#a78bfa)`,border:"none",borderRadius:18,cursor:"pointer",fontSize:26,color:"#fff",boxShadow:"0 8px 24px rgba(108,99,255,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}}>+</button>
+        <button onClick={()=>setModal({tipo:"lancamento",data:{mes:viewMes,ano:viewAno,tipo:tab==="cartoes"?"cartao":"saida"}})} style={{position:"fixed",bottom:72,right:"calc(50% - 224px)",width:52,height:52,background:`${PURPLE}`,border:"none",borderRadius:18,cursor:"pointer",fontSize:26,color:"#fff",boxShadow:"0 4px 12px rgba(0,0,0,0.25)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}}>+</button>
       )}
 
       {/* Bottom Nav */}
       <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"#fff",borderTop:"1px solid #f3f4f6",padding:"8px 0 16px",display:"flex",justifyContent:"space-around",zIndex:100,boxShadow:"0 -4px 20px rgba(0,0,0,0.06)"}}>
         {[
           {key:"inicio",icon:"🏠",label:"Início"},
-          {key:"gastos",icon:"📋",label:"Gastos"},
+          {key:"gastos",icon:"📋",label:"Movim."},
           {key:"cartoes",icon:"💳",label:"Cartões"},
           {key:"contas",icon:"🏦",label:"Contas"},
           {key:"investimentos",icon:"📈",label:"Invest."},
-          {key:"config",icon:"⚙️",label:"Ajustes"},
+          {key:"config",icon:"👤",label:"Perfil"},
         ].map(({key,icon,label})=>(
           <button key={key} onClick={()=>setTab(key)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:"none",border:"none",cursor:"pointer",padding:"0 6px"}}>
             <span style={{fontSize:20}}>{icon}</span>
@@ -860,9 +886,9 @@ function TabGastos({lancs,lancsDoMes,viewMes,viewAno,setViewMes,setViewAno,custo
   const view=filtro==="entradas"?confirmados.filter(l=>l.tipo==="entrada"):filtro==="saidas"?confirmados.filter(l=>l.tipo==="saida"||l.tipo==="cartao"):filtro==="previstas"?[]:confirmados;
   return(
     <div>
-      <div style={{background:`linear-gradient(135deg,#059669,#34d399)`,padding:"20px 20px 28px",borderRadius:"0 0 28px 28px"}}>
+      <div style={{background:`#1a1a1a`,padding:"20px 20px 28px",borderRadius:"0 0 28px 28px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div style={{color:"rgba(255,255,255,0.8)",fontSize:13,fontWeight:600}}>Lançamentos</div>
+          <div style={{color:"rgba(255,255,255,0.8)",fontSize:13,fontWeight:600}}>Movimentações</div>
         </div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:4}}>
           <button onClick={()=>{const r=addM(viewMes,viewAno,-1);setViewMes(r.mes);setViewAno(r.ano);}} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15}}>‹</button>
@@ -935,7 +961,7 @@ function TabGastos({lancs,lancsDoMes,viewMes,viewAno,setViewMes,setViewAno,custo
               const c=getCat(l.catId,[...customCats]);
               const isEntrada=l.tipo==="entrada";
               return(
-                <div key={l.id} style={{background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,boxShadow:"0 2px 8px rgba(0,0,0,0.05)",display:"flex",alignItems:"center",gap:10}}>
+                <div key={l.id} style={{background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,border:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:10}}>
                   <div style={{width:40,height:40,borderRadius:14,background:c.color+"20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{c.icon}</div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.desc}</div>
@@ -962,43 +988,47 @@ function TabGastos({lancs,lancsDoMes,viewMes,viewAno,setViewMes,setViewAno,custo
 }
 
 // ─── Tab Cartões ──────────────────────────────────────────────────────────────
-function TabCartoes({lancs,viewMes,viewAno,setViewMes,setViewAno,customCats,allCats,onEdit,onDelete,onNovaCompra,onImportar}){
-  const [cartaoAtivo,setCartaoAtivo]=useState(CARTOES_LISTA[0]);
+function TabCartoes({lancs,viewMes,viewAno,setViewMes,setViewAno,customCats,allCats,onEdit,onDelete,onNovaCompra,onImportar,cartoesNomes=[],dividas=[]}){
+  const [cartaoSel,setCartaoSel]=useState("");
+  const cartaoAtivo=cartaoSel||cartoesNomes[0]||"";
   const comprasMes=lancs.filter(l=>l.tipo==="cartao"&&l.mesFatura===viewMes&&l.anoFatura===viewAno);
-  const comprasCartao=comprasMes.filter(l=>(l.cartao||"C6")===cartaoAtivo);
+  const comprasCartao=comprasMes.filter(l=>(l.cartao||"")===cartaoAtivo);
   const totalBruto=comprasCartao.reduce((s,l)=>s+(+l.valor||0),0);
+  const dividaAtiva=(dividas.find(d=>d.nome===cartaoAtivo)||{}).divida||0;
   return(
     <div>
-      <div style={{background:"linear-gradient(135deg,#ea580c,#fb923c)",padding:"20px 20px 28px",borderRadius:"0 0 28px 28px"}}>
+      <div style={{background:"#1a1a1a",padding:"20px 20px 28px",borderRadius:"0 0 28px 28px"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:4}}>
           <button onClick={()=>{const r=addM(viewMes,viewAno,-1);setViewMes(r.mes);setViewAno(r.ano);}} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15}}>‹</button>
           <div style={{color:"#fff",fontSize:16,fontWeight:700}}>{MESES[viewMes]} {viewAno}</div>
           <button onClick={()=>{const r=addM(viewMes,viewAno,1);setViewMes(r.mes);setViewAno(r.ano);}} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15}}>›</button>
         </div>
-        <div style={{textAlign:"center",color:"#fff",fontSize:11,opacity:.8}}>Fatura do mês</div>
-        <div style={{textAlign:"center",color:"#fff",fontSize:36,fontWeight:900,letterSpacing:"-1px"}}>{fmt(totalBruto)}</div>
+        <div style={{textAlign:"center",color:"#fff",fontSize:11,opacity:.8}}>Fatura do mês{cartaoAtivo?` · ${cartaoAtivo}`:""}</div>
+        <div style={{textAlign:"center",color:"#fff",fontSize:30,fontWeight:900,letterSpacing:"-0.5px"}}>{fmt(totalBruto)}</div>
+        <div style={{textAlign:"center",color:"#ef4444",fontSize:12,fontWeight:700,marginTop:2}}>Dívida total: {fmt(dividaAtiva)}</div>
       </div>
       <div style={{padding:"12px 16px 0"}}>
         {/* Seletor cartão */}
+        {cartoesNomes.length===0&&<div style={{textAlign:"center",color:"#9ca3af",fontSize:12,padding:"10px 0",marginBottom:8}}>Nenhum cartão cadastrado. Adicione em 👤 Perfil → Contas e Cartões.</div>}
         <div style={{display:"flex",gap:8,marginBottom:16,overflowX:"auto",paddingBottom:4}}>
-          {CARTOES_LISTA.map(c=>{
-            const t=comprasMes.filter(l=>(l.cartao||"C6")===c).reduce((s,l)=>s+(+l.valor||0),0);
+          {cartoesNomes.map(c=>{
+            const t=comprasMes.filter(l=>(l.cartao||"")===c).reduce((s,l)=>s+(+l.valor||0),0);
             return(
-              <button key={c} onClick={()=>setCartaoAtivo(c)} style={{padding:"8px 14px",borderRadius:12,border:`1.5px solid ${cartaoAtivo===c?"#f97316":"#e0e0f0"}`,background:cartaoAtivo===c?"#fff7ed":"#fff",color:cartaoAtivo===c?"#f97316":"#374151",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+              <button key={c} onClick={()=>setCartaoSel(c)} style={{padding:"8px 14px",borderRadius:10,border:`1px solid ${cartaoAtivo===c?"#1a1a1a":"#e5e7eb"}`,background:cartaoAtivo===c?"#1a1a1a":"#fff",color:cartaoAtivo===c?"#fff":"#374151",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
                 ▣ {c}{t>0&&<span style={{marginLeft:4,fontSize:10,opacity:.8}}>{fmt(t)}</span>}
               </button>
             );
           })}
-          <button onClick={onNovaCompra} style={{padding:"8px 14px",borderRadius:12,border:"none",background:"#f97316",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",flexShrink:0,marginLeft:"auto"}}>+ Compra</button>
+          <button onClick={onNovaCompra} style={{padding:"8px 14px",borderRadius:10,border:"none",background:"#1a1a1a",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",flexShrink:0,marginLeft:"auto"}}>+ Compra</button>
         </div>
-        <button onClick={onImportar} style={{width:"100%",background:"#fff7ed",border:"1.5px solid #fed7aa",borderRadius:12,padding:"11px 0",color:"#ea580c",fontWeight:800,fontSize:13,cursor:"pointer",marginBottom:14}}>📸 Importar fatura por foto</button>
+        <button onClick={onImportar} style={{width:"100%",background:"#fff",border:"1px solid #1a1a1a",borderRadius:10,padding:"11px 0",color:"#1a1a1a",fontWeight:800,fontSize:13,cursor:"pointer",marginBottom:14}}>📸 Importar fatura por foto</button>
 
         {comprasCartao.length===0
           ? <div style={{textAlign:"center",color:"#9ca3af",padding:"32px 0",fontSize:13}}>Nenhuma compra no {cartaoAtivo} em {MESES[viewMes]}</div>
           : comprasCartao.map(l=>{
             const c=getCat(l.catId,customCats);
             return(
-              <div key={l.id} style={{background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,boxShadow:"0 2px 8px rgba(0,0,0,0.05)",display:"flex",alignItems:"center",gap:10}}>
+              <div key={l.id} style={{background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,border:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:10}}>
                 <div style={{width:40,height:40,borderRadius:14,background:"#ffedd5",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{c.icon}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.desc}</div>
@@ -1020,46 +1050,46 @@ function TabCartoes({lancs,viewMes,viewAno,setViewMes,setViewAno,customCats,allC
 }
 
 // ─── Tab Contas ───────────────────────────────────────────────────────────────
-function TabContas({contas,lancs,viewMes,viewAno,setViewMes,setViewAno,onAjustarSaldo,onTransferencia,onPagarFatura,onImportar,customCats}){
+function TabContas({contas,lancs,viewMes,viewAno,setViewMes,setViewAno,onSaldoInicial,onTransferencia,onPagarFatura,onImportar,customCats}){
   const [contaAtiva,setContaAtiva]=useState(null);
-  const totalContas=CONTAS_LISTA.reduce((s,c)=>{const ct=contas.find(x=>x.id===c);return s+(ct?+ct.saldo||0:0);},0);
-  const getSaldo=id=>{const c=contas.find(x=>x.id===id);return c?+c.saldo||0:0;};
-  const CORES_CONTAS={"C6":"#ef4444","Inter":"#f97316","Caixa":"#3b82f6","XP":"#10b981","Santander":"#8b5cf6"};
+  const totalContas=contas.reduce((s,c)=>s+(+c.saldoAtual||0),0);
   return(
     <div>
-      <div style={{background:"linear-gradient(135deg,#2563eb,#60a5fa)",padding:"20px 20px 28px",borderRadius:"0 0 28px 28px"}}>
+      <div style={{background:"#1a1a1a",padding:"16px 16px 18px",borderRadius:"0 0 16px 16px"}}>
         <div style={{textAlign:"center"}}>
-          <div style={{color:"rgba(255,255,255,0.7)",fontSize:11,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600}}>Total em contas</div>
-          <div style={{color:"#fff",fontSize:36,fontWeight:900,letterSpacing:"-1px",margin:"4px 0"}}>{fmt(totalContas)}</div>
-          <div style={{color:"rgba(255,255,255,0.6)",fontSize:12}}>{CONTAS_LISTA.length} contas ativas</div>
+          <div style={{color:"rgba(255,255,255,0.6)",fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600}}>Total em contas</div>
+          <div style={{color:totalContas>=0?"#10b981":"#ef4444",fontSize:28,fontWeight:900,letterSpacing:"-0.5px",margin:"2px 0"}}>{fmt(totalContas)}</div>
+          <div style={{color:"rgba(255,255,255,0.45)",fontSize:11}}>{contas.length} conta(s) · saldo = inicial + entradas − saídas</div>
         </div>
       </div>
       <div style={{padding:"12px 16px 0"}}>
         {/* Ações rápidas */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-          <button onClick={onTransferencia} style={{background:"#ede9fe",border:"none",borderRadius:14,padding:"12px",color:PURPLE,fontWeight:700,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>⇄ Transferência</button>
-          <button onClick={onPagarFatura} style={{background:"#fff7ed",border:"none",borderRadius:14,padding:"12px",color:"#f97316",fontWeight:700,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>💳 Pagar Fatura</button>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+          <button onClick={onTransferencia} style={{background:"#1a1a1a",border:"none",borderRadius:10,padding:"12px",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>⇄ Transferência</button>
+          <button onClick={onPagarFatura} style={{background:"#fff",border:"1px solid #1a1a1a",borderRadius:10,padding:"12px",color:"#1a1a1a",fontWeight:700,fontSize:13,cursor:"pointer"}}>💳 Pagar Fatura</button>
         </div>
-        <button onClick={onImportar} style={{width:"100%",background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:12,padding:"11px 0",color:"#2563eb",fontWeight:800,fontSize:13,cursor:"pointer",marginBottom:16}}>📸 Importar extrato por foto</button>
+        <button onClick={onImportar} style={{width:"100%",background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:"11px 0",color:"#1a1a1a",fontWeight:800,fontSize:13,cursor:"pointer",marginBottom:16}}>📸 Importar extrato por foto</button>
 
         {/* Cards de contas */}
-        {CONTAS_LISTA.map(id=>{
-          const saldo=getSaldo(id);
-          const cor=CORES_CONTAS[id]||PURPLE;
+        {contas.length===0&&<div style={{textAlign:"center",color:"#9ca3af",fontSize:12,padding:"16px 0"}}>Nenhuma conta. Adicione em 👤 Perfil → Contas e Cartões.</div>}
+        {contas.map(c=>{
+          const id=c.id;
+          const saldo=+c.saldoAtual||0;
+          const cor=c.cor||"#1a1a1a";
           const lancsConta=lancs.filter(l=>l.contaId===id&&l.mes===viewMes&&l.ano===viewAno&&l.status==="confirmado");
           const isOpen=contaAtiva===id;
           return(
-            <div key={id} style={{background:"#fff",borderRadius:16,padding:"14px",marginBottom:10,boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
+            <div key={id} style={{background:"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:"1px solid #e5e7eb"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,cursor:"pointer"}} onClick={()=>setContaAtiva(isOpen?null:id)}>
-                <div style={{fontSize:14,fontWeight:800,color:"#1f2937"}}>🏦 {id}</div>
-                <div style={{fontSize:18,fontWeight:900,color:saldo>=0?cor:"#ef4444"}}>{fmt(saldo)}</div>
-              </div>
-              <div style={{height:3,background:"#f3f4f6",borderRadius:2,marginBottom:10,overflow:"hidden"}}>
-                <div style={{height:"100%",width:`${Math.min(100,Math.abs(saldo)/Math.max(1,totalContas)*100)}%`,background:cor,borderRadius:2}}/>
+                <div style={{fontSize:14,fontWeight:800,color:"#1a1a1a"}}><span style={{color:cor}}>●</span> {c.tipo==="carteira"?"👛":"🏦"} {c.nome}</div>
+                <div style={{fontSize:18,fontWeight:900,color:saldo>=0?"#10b981":"#ef4444"}}>{fmt(saldo)}</div>
               </div>
               <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                <input type="number" placeholder="Ajustar saldo" defaultValue={saldo||""} onBlur={e=>onAjustarSaldo(id,e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAjustarSaldo(id,e.target.value)} style={{...S.inp,fontSize:12,padding:"7px 10px",flex:1}}/>
-                <button onClick={()=>setContaAtiva(isOpen?null:id)} style={{background:cor+"20",border:"none",borderRadius:10,padding:"7px 12px",color:cor,fontWeight:700,fontSize:11,cursor:"pointer"}}>{isOpen?"▲":"▼"} {lancsConta.length}</button>
+                <div style={{flex:1,display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:10,color:"#6b7280",fontWeight:700,whiteSpace:"nowrap"}}>Saldo inicial</span>
+                  <input type="number" placeholder="0,00" defaultValue={c.saldoInicial!=null?c.saldoInicial:(c.saldo||"")} onBlur={e=>onSaldoInicial(id,e.target.value)} onKeyDown={e=>e.key==="Enter"&&onSaldoInicial(id,e.target.value)} style={{...S.inp,fontSize:12,padding:"7px 10px",flex:1}}/>
+                </div>
+                <button onClick={()=>setContaAtiva(isOpen?null:id)} style={{background:"#f3f4f6",border:"none",borderRadius:8,padding:"7px 12px",color:"#1a1a1a",fontWeight:700,fontSize:11,cursor:"pointer"}}>{isOpen?"▲":"▼"} {lancsConta.length}</button>
               </div>
               {isOpen&&lancsConta.length>0&&(
                 <div style={{marginTop:10,borderTop:"1px solid #f3f4f6",paddingTop:10}}>
@@ -1086,16 +1116,15 @@ function TabContas({contas,lancs,viewMes,viewAno,setViewMes,setViewAno,onAjustar
 }
 
 // ─── Tab Investimentos ────────────────────────────────────────────────────────
-function TabInvestimentos({investimentos,totalInvestido,onNovo,onEdit,onDelete,onRelatorioIR}){
+function TabInvestimentos({investimentos,totalInvestido,onNovo,onEdit,onDelete}){
   const porTipo={};
   TIPOS_INVEST.forEach(t=>{porTipo[t]=investimentos.filter(i=>i.tipo===t).reduce((s,i)=>s+(+i.saldoAtual||0),0);});
   const CORES_INV={"Renda Fixa":"#10b981","Ações":"#3b82f6","FII":"#8b5cf6","Previdência":"#f59e0b","Outros":"#6b7280"};
   return(
     <div>
-      <div style={{background:"linear-gradient(135deg,#4338ca,#818cf8)",padding:"20px 20px 28px",borderRadius:"0 0 28px 28px"}}>
+      <div style={{background:"#1a1a1a",padding:"20px 20px 28px",borderRadius:"0 0 28px 28px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
           <div style={{color:"rgba(255,255,255,0.8)",fontSize:13,fontWeight:600}}>Patrimônio investido</div>
-          <button onClick={onRelatorioIR} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:20,padding:"6px 12px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>📋 Rel. IR</button>
         </div>
         <div style={{textAlign:"center"}}>
           <div style={{color:"rgba(255,255,255,0.7)",fontSize:11,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600}}>Total investido</div>
@@ -1114,7 +1143,7 @@ function TabInvestimentos({investimentos,totalInvestido,onNovo,onEdit,onDelete,o
             const pct=totalInvestido>0?Math.round(val/totalInvestido*100):0;
             const cor=CORES_INV[tipo];
             return(
-              <div key={tipo} style={{background:"#fff",borderRadius:14,padding:"14px",marginBottom:8,boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
+              <div key={tipo} style={{background:"#fff",borderRadius:14,padding:"14px",marginBottom:8,border:"1px solid #e5e7eb"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                   <div style={{fontSize:13,fontWeight:700,color:"#1f2937",display:"flex",alignItems:"center",gap:8}}>
                     <span style={{background:cor+"20",padding:"4px 8px",borderRadius:8,fontSize:12}}>📊</span>{tipo}
@@ -1137,7 +1166,7 @@ function TabInvestimentos({investimentos,totalInvestido,onNovo,onEdit,onDelete,o
             {investimentos.map(i=>{
               const cor=CORES_INV[i.tipo]||PURPLE;
               return(
-                <div key={i.id} style={{background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,boxShadow:"0 2px 8px rgba(0,0,0,0.05)",display:"flex",alignItems:"center",gap:10}}>
+                <div key={i.id} style={{background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,border:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:10}}>
                   <div style={{width:40,height:40,borderRadius:14,background:cor+"20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>📊</div>
                   <div style={{flex:1}}>
                     <div style={{fontSize:13,fontWeight:700}}>{i.nome}</div>
@@ -1301,7 +1330,7 @@ function LeitorNFe({allCats,onClose,onImport}){
           {aba==="foto"&&(
             <div style={{textAlign:"center",padding:"8px 0"}}>
               <div id="nfe-file-reader" style={{display:"none"}}/>
-              <label style={{display:"inline-block",...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),padding:"13px 22px",cursor:"pointer"}}>
+              <label style={{display:"inline-block",...S.btn(`${PURPLE}`),padding:"13px 22px",cursor:"pointer"}}>
                 📸 Tirar / escolher foto
                 <input type="file" accept="image/*" capture="environment" onChange={handleFoto} style={{display:"none"}}/>
               </label>
@@ -1311,7 +1340,7 @@ function LeitorNFe({allCats,onClose,onImport}){
           {loading&&<div style={{textAlign:"center",color:PURPLE,fontWeight:700,marginTop:14}}>Buscando dados da nota…</div>}
           {erro&&<div style={{background:"#fef2f2",border:"1.5px solid #fecaca",color:"#b91c1c",borderRadius:12,padding:"10px 12px",fontSize:12,marginTop:14}}>{erro}</div>}
           {fotoFile&&!loading&&(
-            <button type="button" onClick={analisarComIA} disabled={loadingIA} style={{...S.btn("linear-gradient(135deg,#7c3aed,#a78bfa)"),width:"100%",padding:"12px 0",fontSize:13,marginTop:12,opacity:loadingIA?.7:1}}>
+            <button type="button" onClick={analisarComIA} disabled={loadingIA} style={{...S.btn("#1a1a1a"),width:"100%",padding:"12px 0",fontSize:13,marginTop:12,opacity:loadingIA?.7:1}}>
               {loadingIA?"🤖 Analisando a foto com IA…":"🤖 Extrair itens da foto com IA"}
             </button>
           )}
@@ -1337,7 +1366,7 @@ function LeitorNFe({allCats,onClose,onImport}){
               </div>
           }
           {itens.length>0&&(
-            <button type="button" onClick={()=>onImport(itens)} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",padding:"13px 0",fontSize:14}}>
+            <button type="button" onClick={()=>onImport(itens)} style={{...S.btn(`${PURPLE}`),width:"100%",padding:"13px 0",fontSize:14}}>
               ✓ Importar {itens.length} lançamento(s)
             </button>
           )}
@@ -1348,15 +1377,16 @@ function LeitorNFe({allCats,onClose,onImport}){
   );
 }
 
-function LancForm({data,onSave,onClose,allCats,viewMes,viewAno,onImportNFe,membros=[]}){
-  const [f,setF]=useState({tipo:"saida",desc:"",valor:"",catId:"",formaPag:"📱 Pix",contaId:"C6",cartao:"C6",membro:membros[0]||"",mes:viewMes,ano:viewAno,data:todayStr(),status:"confirmado",parcelas:1,irDedutivel:false,irTipo:"",...data});
+function LancForm({data,onSave,onClose,allCats,customCats=[],viewMes,viewAno,onImportNFe,membros=[],contas=[],cartoesNomes=[]}){
+  const [f,setF]=useState({tipo:"saida",desc:"",valor:"",catId:"",subId:"",formaPag:"📱 Pix",contaId:"",cartao:cartoesNomes[0]||"",membro:membros[0]||"",mes:viewMes,ano:viewAno,data:todayStr(),status:"confirmado",parcelas:1,parcelaAtual:1,irDedutivel:false,irTipo:"",...data});
+  const [err,setErr]=useState("");
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const [showNFe,setShowNFe]=useState(false);
   const isCartao=f.tipo==="cartao";
   const isEntrada=f.tipo==="entrada";
   const handleData=v=>{set("data",v);if(v){const d=new Date(v+"T00:00:00");set("mes",d.getMonth());set("ano",d.getFullYear());}};
   const catsFiltradas=isEntrada?CATS_RECEITA:[...CATS_DESPESA,...(allCats.filter(c=>c.custom))];
-  const sugestaoIR=["saude","medicamento","educacao","dizimo"].includes(f.catId);
+  const sugestaoIR=["saude","medicamento","educacao","doacoes","dizimo"].includes(f.catId);
   return(
     <Modal title={f.id?"Editar Lançamento":"Novo Lançamento"} onClose={onClose}>
       {!f.id&&(
@@ -1379,26 +1409,47 @@ function LancForm({data,onSave,onClose,allCats,viewMes,viewAno,onImportNFe,membr
         <Field label="Data" half><input value={f.data||""} onChange={e=>handleData(e.target.value)} type="date" style={S.inp}/></Field>
       </div>
       {isCartao&&(
-        <div style={{display:"flex",gap:10}}>
-          <Field label="Cartão" half><select value={f.cartao} onChange={e=>set("cartao",e.target.value)} style={S.inp}>{CARTOES_LISTA.map(c=><option key={c}>{c}</option>)}</select></Field>
-          <Field label="Nº parcelas" half><input value={f.parcelas} onChange={e=>set("parcelas",Math.max(1,+e.target.value||1))} type="number" min="1" max="60" style={S.inp}/></Field>
-        </div>
+        <>
+          <div style={{display:"flex",gap:10}}>
+            <Field label="Cartão *" half><select value={f.cartao} onChange={e=>set("cartao",e.target.value)} style={S.inp}><option value="">— Selecione —</option>{cartoesNomes.map(c=><option key={c}>{c}</option>)}</select></Field>
+            <Field label="Nº parcelas" half><input value={f.parcelas} onChange={e=>set("parcelas",Math.max(1,+e.target.value||1))} type="number" min="1" max="60" style={S.inp}/></Field>
+          </div>
+          {(+f.parcelas||1)>1&&!f.id&&(
+            <>
+              <div style={{display:"flex",gap:10}}>
+                <Field label="Parcela atual" half><input value={f.parcelaAtual} onChange={e=>set("parcelaAtual",Math.max(1,+e.target.value||1))} type="number" min="1" style={S.inp}/></Field>
+                <Field label="Mês da parcela atual" half><select value={f.mes} onChange={e=>set("mes",+e.target.value)} style={S.inp}>{MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}</select></Field>
+              </div>
+              <div style={{background:"#f8f9fa",border:"1px solid #e5e7eb",borderRadius:10,padding:"10px 12px",marginBottom:12,fontSize:12,color:"#374151"}}>
+                💳 {Math.max(1,(+f.parcelas||1)-(Math.min(+f.parcelaAtual||1,+f.parcelas||1))+1)} lançamento(s) de {fmt((+f.valor||0)/Math.max(1,+f.parcelas||1))} — da parcela {Math.min(+f.parcelaAtual||1,+f.parcelas||1)}/{f.parcelas} ({MESES[f.mes]}) até a {f.parcelas}/{f.parcelas}, criados automaticamente nas faturas seguintes.
+              </div>
+            </>
+          )}
+        </>
       )}
       {!isCartao&&(
         <>
           <Field label="Forma de pagamento"><ChipSelect options={FORMAS_PAG} value={f.formaPag} onChange={v=>set("formaPag",v)}/></Field>
-          <Field label="Conta"><select value={f.contaId} onChange={e=>set("contaId",e.target.value)} style={S.inp}><option value="">— Sem vínculo —</option>{CONTAS_LISTA.map(c=><option key={c}>{c}</option>)}</select></Field>
+          <Field label={isEntrada?"Conta de destino (onde entrou) *":"Conta de origem (de onde saiu) *"}><select value={f.contaId} onChange={e=>set("contaId",e.target.value)} style={S.inp}><option value="">— Selecione —</option>{contas.map(c=><option key={c.id} value={c.id}>{c.tipo==="carteira"?"👛":"🏦"} {c.nome}</option>)}</select></Field>
         </>
       )}
       <div style={{display:"flex",gap:10}}>
         <Field label="Membro" half><select value={f.membro} onChange={e=>set("membro",e.target.value)} style={S.inp}>{membros.length?membros.map(m=><option key={m}>{m}</option>):<option value="">— Cadastre em ⚙️ Ajustes —</option>}</select></Field>
         <Field label="Categoria" half>
-          <select value={f.catId} onChange={e=>set("catId",e.target.value)} style={S.inp}>
+          <select value={f.catId} onChange={e=>{set("catId",e.target.value);set("subId","");}} style={S.inp}>
             <option value="">— Categoria —</option>
             {catsFiltradas.map(c=><option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
           </select>
         </Field>
       </div>
+      {(()=>{ const subs=subsDe(f.catId,customCats); if(!subs.length) return null; return(
+        <Field label="Subcategoria">
+          <select value={f.subId||""} onChange={e=>set("subId",e.target.value)} style={S.inp}>
+            <option value="">— Sem subcategoria —</option>
+            {subs.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+        </Field>
+      );})()}
       {/* Sugestão IR */}
       {sugestaoIR&&!isEntrada&&(
         <div style={{background:"#fefce8",border:"1.5px solid #fef08a",borderRadius:12,padding:"10px 12px",marginBottom:12}}>
@@ -1430,15 +1481,22 @@ function LancForm({data,onSave,onClose,allCats,viewMes,viewAno,onImportNFe,membr
           )}
         </div>
       )}
-      <button onClick={()=>onSave(f)} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",padding:"13px 0",fontSize:14,marginTop:4}}>
+      {err&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#b91c1c",borderRadius:10,padding:"9px 12px",fontSize:12,marginBottom:10}}>{err}</div>}
+      <button onClick={()=>{
+        if(!(f.desc||"").trim()){setErr("Informe a descrição.");return;}
+        if(!(+f.valor>0)){setErr("Informe o valor.");return;}
+        if(isCartao&&!f.cartao){setErr("Selecione o cartão.");return;}
+        if(!isCartao&&!f.contaId){setErr(isEntrada?"Selecione em qual conta/carteira o valor entrou.":"Selecione de qual conta/carteira o valor saiu.");return;}
+        onSave(f);
+      }} style={{...S.btn(PURPLE),width:"100%",padding:"13px 0",fontSize:14,marginTop:4}}>
         {f.id?"Salvar alterações":"✓ Registrar"}
       </button>
     </Modal>
   );
 }
 
-function BaseForm({data,onSave,onClose,allCats,membros=[]}){
-  const [f,setF]=useState({tipo:"prevista",desc:"",valorPrevisto:"",catId:"",membro:membros[0]||"",mesInicio:HOJE.getMonth(),anoInicio:HOJE.getFullYear(),cartao:CARTOES_LISTA[0],parcelas:1,parcelaAtual:1,mesFatura:HOJE.getMonth(),anoFatura:HOJE.getFullYear(),ativo:true,...data});
+function BaseForm({data,onSave,onClose,allCats,membros=[],cartoesNomes=[]}){
+  const [f,setF]=useState({tipo:"prevista",desc:"",valorPrevisto:"",catId:"",membro:membros[0]||"",mesInicio:HOJE.getMonth(),anoInicio:HOJE.getFullYear(),cartao:cartoesNomes[0]||"",parcelas:1,parcelaAtual:1,mesFatura:HOJE.getMonth(),anoFatura:HOJE.getFullYear(),ativo:true,...data});
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const tm=BASE_TIPOS[f.tipo]||BASE_TIPOS.prevista;
   const isParcela=f.tipo==="parcela_cartao";
@@ -1479,7 +1537,7 @@ function BaseForm({data,onSave,onClose,allCats,membros=[]}){
       {isParcela&&(
         <>
           <div style={{display:"flex",gap:10}}>
-            <Field label="Cartão" half><select value={f.cartao} onChange={e=>set("cartao",e.target.value)} style={S.inp}>{CARTOES_LISTA.map(c=><option key={c}>{c}</option>)}</select></Field>
+            <Field label="Cartão" half><select value={f.cartao} onChange={e=>set("cartao",e.target.value)} style={S.inp}><option value="">— Selecione —</option>{cartoesNomes.map(c=><option key={c}>{c}</option>)}</select></Field>
             <Field label="Total de parcelas" half><input value={f.parcelas} onChange={e=>set("parcelas",Math.max(1,+e.target.value||1))} type="number" min="1" max="60" style={S.inp}/></Field>
           </div>
           <div style={{display:"flex",gap:10}}>
@@ -1498,7 +1556,7 @@ function BaseForm({data,onSave,onClose,allCats,membros=[]}){
         </div>
       )}
       {f.id&&<label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:"#6b7280",marginBottom:12}}><input type="checkbox" checked={f.ativo!==false} onChange={e=>set("ativo",e.target.checked)} style={{width:15,height:15,accentColor:PURPLE}}/>Item ativo (desmarque para encerrar sem apagar)</label>}
-      <button onClick={()=>onSave(f)} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",padding:"13px 0",fontSize:14}}>
+      <button onClick={()=>onSave(f)} style={{...S.btn(`${PURPLE}`),width:"100%",padding:"13px 0",fontSize:14}}>
         {f.id?"Salvar":"Cadastrar"}
       </button>
     </Modal>
@@ -1516,7 +1574,7 @@ function ConfirmPendenteModal({pendente,onConfirm,onClose}){
         <div style={{fontSize:11,color:"#9ca3af",marginTop:3}}>{tm.icon} {tm.label}{pendente.cartao?` · ${pendente.cartao}`:""} · previsto {fmt(pendente.valorPrevisto)}</div>
       </div>
       <Field label="Valor real (R$)"><input value={valor} onChange={e=>setValor(e.target.value)} type="number" autoFocus style={S.inp} onKeyDown={e=>e.key==="Enter"&&+valor>0&&onConfirm(+valor)}/></Field>
-      <button onClick={()=>onConfirm(+valor||0)} disabled={!(+valor>0)} style={{...S.btn("linear-gradient(135deg,#059669,#34d399)"),width:"100%",padding:"13px 0",fontSize:14,opacity:+valor>0?1:.5}}>
+      <button onClick={()=>onConfirm(+valor||0)} disabled={!(+valor>0)} style={{...S.btn("#1a1a1a"),width:"100%",padding:"13px 0",fontSize:14,opacity:+valor>0?1:.5}}>
         ✓ Confirmar {tm.lancTipo==="entrada"?"recebimento":"pagamento"}
       </button>
     </Modal>
@@ -1524,8 +1582,6 @@ function ConfirmPendenteModal({pendente,onConfirm,onClose}){
 }
 
 // ─── Importar Extrato por Foto ───────────────────────────────────────────────
-const BANCOS_IMPORT=["C6","XP","Nubank","Inter","Santander","Outro"];
-const CARTOES_DETECT=["C6","XP","Nubank","Inter","Santander"];
 const RX_PGTO_FAT=/pgto\s*fat|pagamento\s*fatura|pag\s*fatura/i;
 const CAT_IDS_VALIDAS=new Set([...CATS_RECEITA,...CATS_DESPESA].map(c=>c.id));
 const _normTxt=(s)=>(s||"").toLowerCase().normalize("NFD").replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
@@ -1551,10 +1607,10 @@ function chaveDedup(data,valor,desc){
   const dk=(desc||"").toUpperCase().replace(/\s+/g," ").trim().substring(0,15);
   return `${normDataKey(data)}_${v}_${dk}`;
 }
-function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno}){
+function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,contas=[],cartoesNomes=[]}){
   const [tipo,setTipo]=useState(contexto);
   const isCartao=tipo==="cartao";
-  const grad=isCartao?"linear-gradient(135deg,#ea580c,#fb923c)":"linear-gradient(135deg,#2563eb,#60a5fa)";
+  const grad=isCartao?"#1a1a1a":"#1a1a1a";
   const [banco,setBanco]=useState("");
   const [files,setFiles]=useState([]);
   const [loading,setLoading]=useState(false);
@@ -1595,7 +1651,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno})
             parcela:it.parcela||null, titular:it.titular||null,
             catId:CAT_IDS_VALIDAS.has(it.categoria)?it.categoria:(inflow?"":sugerirCategoria(it.desc)),
             membro:membros[0]||"",
-            cartaoFatura:pag?(detectarBanco(it.desc,CARTOES_DETECT)||CARTOES_LISTA[0]):null,
+            cartaoFatura:pag?(detectarBanco(it.desc,cartoesNomes)||cartoesNomes[0]||""):null,
           };
           novo.dup=ehDuplicata(novo,acc);
           novo.sel=!novo.dup&&it.tipo!=="estorno";
@@ -1604,7 +1660,10 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno})
       }
       acc.forEach((it,i)=>{it._i=i;});
       setItens(acc); setBancoDetectado(bDet); setPeriodo(per); setDescartados(total-acc.length); setResultado(true);
-      if(!banco){ const m=detectarBanco(bDet,BANCOS_IMPORT); if(m) setBanco(m); }
+      if(!banco){
+        if(isCartao){ const m=detectarBanco(bDet,cartoesNomes); if(m) setBanco(m); }
+        else { const m=detectarBanco(bDet,contas.map(c=>c.nome)); const ct=contas.find(c=>c.nome===m); if(ct) setBanco(ct.id); }
+      }
       if(!acc.length) setErro("Nenhuma transação reconhecida. Tente imagens mais nítidas.");
     }catch(e){ setErro("Falha ao extrair: "+e.message); }
     setLoading(false); setProgresso("");
@@ -1621,7 +1680,17 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno})
       const v=Math.abs(+it.valor||0); const mem=it.membro||membros[0]||"";
       if(isCartao){
         const est=it.tipo==="estorno";
-        arr.push({ tipo:"cartao", desc:it.desc, valor:est?-v:v, catId:it.catId, membro:mem, cartao:banco, mes:+mes, ano:+ano, mesFatura:+mes, anoFatura:+ano, parcelas:1, status:"confirmado", origem:"extrato", data:todayStr() });
+        arr.push({ tipo:"cartao", desc:it.desc, valor:est?-v:v, catId:it.catId, subId:it.subId||"", membro:mem, cartao:banco, parcela:it.parcela||null, mes:+mes, ano:+ano, mesFatura:+mes, anoFatura:+ano, parcelas:1, status:"confirmado", origem:"extrato", data:todayStr() });
+        // Parcela X/Y detectada e não é a última: cria as parcelas futuras nas faturas seguintes
+        const pm=String(it.parcela||"").match(/(\d+)\s*\/\s*(\d+)/);
+        if(!est&&pm&&+pm[1]<+pm[2]){
+          const x=+pm[1], y=+pm[2];
+          const baseDesc=it.desc.replace(/\(?\s*\d+\s*\/\s*\d+\s*\)?\s*$/,"").trim()||it.desc;
+          for(let i=1;i<=y-x;i++){
+            const r=addM(+mes,+ano,i);
+            arr.push({ tipo:"cartao", desc:`${baseDesc} (${x+i}/${y})`, valor:v, catId:it.catId, membro:mem, cartao:banco, parcela:`${x+i}/${y}`, mes:r.mes, ano:r.ano, mesFatura:r.mes, anoFatura:r.ano, parcelas:1, status:"confirmado", origem:"extrato_parcela", data:todayStr() });
+          }
+        }
       } else if(it.tipo==="pagamento_fatura"){
         saidas+=v;
         arr.push({ tipo:"saida", desc:it.desc, valor:v, catId:it.catId||"outras", membro:mem, contaId:banco, formaPag:"Pagamento fatura", mes:+mes, ano:+ano, data:todayStr(), status:"confirmado", origem:"extrato", pagamentoFatura:true, cartaoFatura:it.cartaoFatura||null });
@@ -1644,14 +1713,14 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno})
           <Field label="Tipo">
             <div style={{display:"flex",gap:8}}>
               {[["cartao","💳 Cartão de crédito"],["conta","🏦 Conta corrente"]].map(([k,l])=>(
-                <button key={k} type="button" onClick={()=>setTipo(k)} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1.5px solid ${tipo===k?(k==="cartao"?"#ea580c":"#2563eb"):"#e0e0f0"}`,background:tipo===k?(k==="cartao"?"#fff7ed":"#eff6ff"):"#fff",color:tipo===k?(k==="cartao"?"#ea580c":"#2563eb"):"#6b7280",fontWeight:700,fontSize:12,cursor:"pointer"}}>{l}</button>
+                <button key={k} type="button" onClick={()=>{setTipo(k);setBanco("");}} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${tipo===k?"#1a1a1a":"#e5e7eb"}`,background:tipo===k?"#1a1a1a":"#fff",color:tipo===k?"#fff":"#6b7280",fontWeight:700,fontSize:12,cursor:"pointer"}}>{l}</button>
               ))}
             </div>
           </Field>
           <Field label={isCartao?"Cartão":"Banco / Conta"}>
             <select value={banco} onChange={e=>setBanco(e.target.value)} style={S.inp}>
               <option value="">— Selecione —</option>
-              {BANCOS_IMPORT.map(b=><option key={b} value={b}>{b}</option>)}
+              {isCartao?cartoesNomes.map(b=><option key={b} value={b}>{b}</option>):contas.map(c=><option key={c.id} value={c.id}>{c.tipo==="carteira"?"👛 ":""}{c.nome}</option>)}
             </select>
           </Field>
           {!banco?(
@@ -1681,7 +1750,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno})
           <div style={{background:"#f8f9ff",border:"1.5px solid #e0e0f0",borderRadius:12,padding:"10px 12px",marginBottom:12}}>
             <div style={{fontSize:11,color:"#6b7280",marginBottom:8,fontWeight:600}}>🏦 {bancoDetectado||banco}{periodo?` · ${periodo}`:""}</div>
             <div style={{display:"flex",gap:8}}>
-              <select value={banco} onChange={e=>setBanco(e.target.value)} style={{...S.inp,fontSize:12,flex:1}}>{BANCOS_IMPORT.map(b=><option key={b}>{b}</option>)}</select>
+              <select value={banco} onChange={e=>setBanco(e.target.value)} style={{...S.inp,fontSize:12,flex:1}}>{isCartao?cartoesNomes.map(b=><option key={b} value={b}>{b}</option>):contas.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select>
               <select value={mes} onChange={e=>setMes(+e.target.value)} style={{...S.inp,fontSize:12,width:118}}>{MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}</select>
               <input value={ano} onChange={e=>setAno(+e.target.value)} type="number" style={{...S.inp,fontSize:12,width:76}}/>
             </div>
@@ -1715,7 +1784,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno})
                   </div>
                   <div style={{display:"flex",gap:6,paddingLeft:24}}>
                     {pag
-                      ? <select value={it.cartaoFatura||CARTOES_LISTA[0]} onChange={e=>upd(it._i,"cartaoFatura",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:1}}>{CARTOES_DETECT.map(c=><option key={c}>{c}</option>)}</select>
+                      ? <select value={it.cartaoFatura||cartoesNomes[0]||""} onChange={e=>upd(it._i,"cartaoFatura",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:1}}>{cartoesNomes.map(c=><option key={c}>{c}</option>)}</select>
                       : <select value={it.catId} onChange={e=>upd(it._i,"catId",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:1}}>
                           <option value="">— Categoria —</option>
                           {cats.map(c=><option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
@@ -1756,7 +1825,7 @@ function ResetModal({onConfirm,onClose}){
       </Field>
       <div style={{display:"flex",gap:8,marginTop:6}}>
         <button onClick={onClose} disabled={loading} style={{...S.btn("#f3f4f6","#374151"),flex:1,padding:"12px 0"}}>Cancelar</button>
-        <button onClick={confirmar} disabled={!ok||loading} style={{...S.btn("linear-gradient(135deg,#dc2626,#ef4444)"),flex:2,padding:"12px 0",opacity:ok&&!loading?1:.5,cursor:ok&&!loading?"pointer":"not-allowed"}}>
+        <button onClick={confirmar} disabled={!ok||loading} style={{...S.btn("#ef4444"),flex:2,padding:"12px 0",opacity:ok&&!loading?1:.5,cursor:ok&&!loading?"pointer":"not-allowed"}}>
           {loading?"Apagando…":"🗑️ Resetar tudo"}
         </button>
       </div>
@@ -1779,8 +1848,8 @@ function ConsultorFinanceiro({analises,atualId,mesLabel,loading,erro,onGerar,onC
   if(a&&a.categorias&&a.categorias.length){ let acc=0; const stops=a.categorias.map((c,i)=>{const st=acc;acc=Math.min(100,acc+(+c.percentual||0));return `${PIE[i%PIE.length]} ${st}% ${acc}%`;}); pieGrad=`conic-gradient(${stops.join(",")})`; }
   const nota=a?Math.round((+a.notaSaude||0)*10)/10:0;
   return(
-    <div style={{position:"fixed",inset:0,background:"#f0f4ff",zIndex:600,overflowY:"auto",fontFamily:"'Inter','Segoe UI',sans-serif"}}>
-      <div style={{background:`linear-gradient(135deg,${PURPLE},#a78bfa)`,padding:"18px 16px",position:"sticky",top:0,zIndex:2,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+    <div style={{position:"fixed",inset:0,background:"#f8f9fa",zIndex:600,overflowY:"auto",fontFamily:"'Inter','Segoe UI',sans-serif"}}>
+      <div style={{background:`${PURPLE}`,padding:"18px 16px",position:"sticky",top:0,zIndex:2,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{color:"#fff",fontSize:18,fontWeight:900}}>🤖 Consultor</div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>setView(view==="historico"?"atual":"historico")} style={pill}>📅 Histórico</button>
@@ -1813,11 +1882,11 @@ function ConsultorFinanceiro({analises,atualId,mesLabel,loading,erro,onGerar,onC
           <div style={{textAlign:"center",padding:"48px 0"}}>
             <div style={{fontSize:32,marginBottom:12}}>📊</div>
             <div style={{fontSize:14,color:"#6b7280",marginBottom:16}}>Ainda não há análise para {mesLabel}.</div>
-            <button onClick={onGerar} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),padding:"12px 24px",fontSize:14}}>🤖 Gerar análise</button>
+            <button onClick={onGerar} style={{...S.btn(`${PURPLE}`),padding:"12px 24px",fontSize:14}}>🤖 Gerar análise</button>
           </div>
         ):(
           <>
-            <div style={{display:"flex",alignItems:"center",gap:16,background:"#fff",borderRadius:20,padding:"18px",marginBottom:16,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:16,background:"#fff",borderRadius:20,padding:"18px",marginBottom:16,border:"1px solid #e5e7eb"}}>
               <div style={{width:84,height:84,borderRadius:"50%",background:`conic-gradient(${corNota(nota)} ${nota*10}%, #e5e7eb 0)`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                 <div style={{width:64,height:64,borderRadius:"50%",background:"#fff",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
                   <span style={{fontSize:24,fontWeight:900,color:corNota(nota)}}>{nota}</span>
@@ -1832,7 +1901,7 @@ function ConsultorFinanceiro({analises,atualId,mesLabel,loading,erro,onGerar,onC
             </div>
             <div style={{background:`${PURPLE}10`,border:`1.5px solid ${PURPLE}30`,borderRadius:16,padding:"14px 16px",marginBottom:16,fontSize:14,fontWeight:600,color:"#374151",lineHeight:1.5}}>{a.resumo}</div>
             {a.categorias&&a.categorias.length>0&&(
-              <div style={{background:"#fff",borderRadius:20,padding:"18px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
+              <div style={{background:"#fff",borderRadius:20,padding:"18px",marginBottom:16,border:"1px solid #e5e7eb"}}>
                 <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:14}}>🥧 Gastos por categoria</div>
                 <div style={{display:"flex",alignItems:"center",gap:18}}>
                   <div style={{width:120,height:120,borderRadius:"50%",background:pieGrad,flexShrink:0,boxShadow:"inset 0 0 0 1px rgba(0,0,0,0.04)"}}/>
@@ -1853,7 +1922,7 @@ function ConsultorFinanceiro({analises,atualId,mesLabel,loading,erro,onGerar,onC
               <div style={{marginBottom:16}}>
                 <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:10}}>💡 Insights</div>
                 {a.insights.map((ins,i)=>(
-                  <div key={i} style={{display:"flex",gap:10,background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,boxShadow:"0 2px 6px rgba(0,0,0,0.04)"}}>
+                  <div key={i} style={{display:"flex",gap:10,background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,border:"1px solid #e5e7eb"}}>
                     <span style={{fontSize:16,flexShrink:0}}>{ICON[ins.tipo]||"ℹ️"}</span>
                     <span style={{fontSize:13,color:"#374151",lineHeight:1.5}}>{ins.texto}</span>
                   </div>
@@ -1864,7 +1933,7 @@ function ConsultorFinanceiro({analises,atualId,mesLabel,loading,erro,onGerar,onC
               <div style={{marginBottom:16}}>
                 <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:10}}>🎯 Sugestões</div>
                 {a.sugestoes.map((s,i)=>(
-                  <div key={i} style={{display:"flex",gap:10,background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,boxShadow:"0 2px 6px rgba(0,0,0,0.04)"}}>
+                  <div key={i} style={{display:"flex",gap:10,background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,border:"1px solid #e5e7eb"}}>
                     <span style={{width:22,height:22,borderRadius:"50%",background:PURPLE,color:"#fff",fontSize:11,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</span>
                     <span style={{fontSize:13,color:"#374151",lineHeight:1.5}}>{s}</span>
                   </div>
@@ -1872,12 +1941,12 @@ function ConsultorFinanceiro({analises,atualId,mesLabel,loading,erro,onGerar,onC
               </div>
             )}
             {a.comparacao&&(
-              <div style={{background:"#fff",borderRadius:16,padding:"14px 16px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
+              <div style={{background:"#fff",borderRadius:16,padding:"14px 16px",marginBottom:16,border:"1px solid #e5e7eb"}}>
                 <div style={{fontSize:13,fontWeight:800,color:"#374151",marginBottom:6}}>📈 Comparação com meses anteriores</div>
                 <div style={{fontSize:13,color:"#6b7280",lineHeight:1.5}}>{a.comparacao}</div>
               </div>
             )}
-            <button onClick={onGerar} disabled={loading} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",padding:"13px 0",fontSize:14,marginBottom:24,opacity:loading?.6:1}}>
+            <button onClick={onGerar} disabled={loading} style={{...S.btn(`${PURPLE}`),width:"100%",padding:"13px 0",fontSize:14,marginBottom:24,opacity:loading?.6:1}}>
               {loading?"Atualizando…":"🔄 Atualizar análise"}
             </button>
           </>
@@ -1890,37 +1959,165 @@ function ConsultorFinanceiro({analises,atualId,mesLabel,loading,erro,onGerar,onC
 // ─── Configurações Financeiras ───────────────────────────────────────────────
 function ConfigFinanceira({config,onSave}){
   const [dia,setDia]=useState(config.diaFechamento||31);
-  const [venc,setVenc]=useState({...config.vencimentos});
-  useEffect(()=>{ setDia(config.diaFechamento||31); setVenc({...config.vencimentos}); },[config]);
-  const setV=(c,v)=>setVenc(p=>({...p,[c]:v}));
+  useEffect(()=>{ setDia(config.diaFechamento||31); },[config]);
   const clamp=(v,d)=>Math.max(1,Math.min(31,Math.round(+v||d)));
-  const salvar=()=>{
-    const vobj={}; CARTOES_LISTA.forEach(c=>{ vobj[c]=clamp(venc[c],25); });
-    onSave({diaFechamento:clamp(dia,31), vencimentos:vobj});
-  };
   return(
     <div style={{marginBottom:18}}>
       <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:4}}>⚙️ Configurações Financeiras</div>
-      <div style={{fontSize:11,color:"#9ca3af",marginBottom:12}}>Usadas nos cálculos de "livre por dia" do painel.</div>
+      <div style={{fontSize:11,color:"#9ca3af",marginBottom:12}}>O vencimento de cada cartão fica no cadastro do cartão (acima).</div>
       <Field label="Dia de fechamento do mês (1–31)">
         <input value={dia} onChange={e=>setDia(e.target.value)} type="number" min="1" max="31" style={S.inp}/>
       </Field>
-      <div style={{fontSize:11,color:"#6b7280",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",margin:"4px 0 8px"}}>Vencimento por cartão</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        {CARTOES_LISTA.map(c=>(
-          <Field key={c} label={c} half>
-            <input value={venc[c]??25} onChange={e=>setV(c,e.target.value)} type="number" min="1" max="31" style={S.inp}/>
-          </Field>
-        ))}
-      </div>
-      <button onClick={salvar} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",padding:"12px 0",fontSize:13,marginTop:6}}>💾 Salvar configurações</button>
+      <button onClick={()=>onSave({diaFechamento:clamp(dia,31)})} style={{...S.btn(PURPLE),width:"100%",padding:"12px 0",fontSize:13,marginTop:6}}>💾 Salvar configurações</button>
       <div style={{height:1,background:"#f0f0f5",margin:"16px 0 0"}}/>
     </div>
   );
 }
 
-// ─── Tab Configurações ────────────────────────────────────────────────────────
-function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,onDelMembro,config={},onSaveConfig,onAdd,onEdit,onDelete,onLogout,onReset,onLimparDup,convites=[],onConvidar,onCancelarConvite}){
+// ─── Perfil: Contas e Cartões ────────────────────────────────────────────────
+function ContasCartoesSection({contas=[],cartoes=[],onSaveConta,onDeleteConta,onSaveCartao,onDeleteCartao}){
+  const [fc,setFc]=useState(null); // form conta
+  const [fk,setFk]=useState(null); // form cartão
+  const row={display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:"8px 12px",marginBottom:6};
+  const mini={background:"#f3f4f6",border:"none",borderRadius:8,color:"#6b7280",padding:"5px 7px",cursor:"pointer",fontSize:11};
+  const del={background:"#fef2f2",border:"none",borderRadius:8,color:"#ef4444",padding:"5px 7px",cursor:"pointer",fontSize:11};
+  const tipoLabel=t=>(TIPOS_CONTA.find(x=>x[0]===t)||["","Conta"])[1];
+  return(
+    <div style={{marginBottom:18}}>
+      <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:10}}>💳 Contas e Cartões</div>
+      {/* Contas */}
+      <div style={{fontSize:11,color:"#6b7280",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Contas</div>
+      {contas.map(c=>(
+        <div key={c.id} style={row}>
+          <span style={{color:c.cor||"#1a1a1a"}}>●</span>
+          <span style={{flex:1,fontSize:13,fontWeight:700,color:"#1a1a1a"}}>{c.nome} <span style={{fontSize:10,color:"#9ca3af",fontWeight:600}}>· {tipoLabel(c.tipo||"banco")}</span></span>
+          <span style={{fontSize:12,fontWeight:800,color:(c.saldoAtual||0)>=0?"#10b981":"#ef4444"}}>{fmt(c.saldoAtual)}</span>
+          <button onClick={()=>setFc({...c})} style={mini}>✏</button>
+          <button onClick={()=>onDeleteConta(c.id)} style={del}>✕</button>
+        </div>
+      ))}
+      {!fc&&<button onClick={()=>setFc({nome:"",tipo:"banco",cor:CORES_PALETA[0],saldoInicial:""})} style={{width:"100%",background:"#fff",border:"1px solid #1a1a1a",borderRadius:10,padding:"10px 0",color:"#1a1a1a",fontWeight:800,fontSize:12,cursor:"pointer",marginBottom:12}}>+ Adicionar conta</button>}
+      {fc&&(
+        <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"12px",marginBottom:12}}>
+          <Field label="Nome"><input value={fc.nome} onChange={e=>setFc(p=>({...p,nome:e.target.value}))} placeholder="Ex: Nubank, Carteira..." style={S.inp}/></Field>
+          <div style={{display:"flex",gap:10}}>
+            <Field label="Tipo" half><select value={fc.tipo} onChange={e=>setFc(p=>({...p,tipo:e.target.value}))} style={S.inp}>{TIPOS_CONTA.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select></Field>
+            <Field label="Saldo inicial (R$)" half><input value={fc.saldoInicial} onChange={e=>setFc(p=>({...p,saldoInicial:e.target.value}))} type="number" placeholder="0,00" style={S.inp}/></Field>
+          </div>
+          <Field label="Cor">
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {CORES_PALETA.map(c=><button key={c} type="button" onClick={()=>setFc(p=>({...p,cor:c}))} style={{width:26,height:26,borderRadius:6,background:c,border:fc.cor===c?"2px solid #6b7280":"2px solid transparent",cursor:"pointer"}}/>)}
+            </div>
+          </Field>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setFc(null)} style={{...S.btn("#f3f4f6","#374151"),flex:1,padding:"10px 0"}}>Cancelar</button>
+            <button onClick={()=>{if(!(fc.nome||"").trim())return;onSaveConta(fc);setFc(null);}} style={{...S.btn(PURPLE),flex:2,padding:"10px 0"}}>{fc.id?"Salvar":"Adicionar"}</button>
+          </div>
+        </div>
+      )}
+      {/* Cartões */}
+      <div style={{fontSize:11,color:"#6b7280",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Cartões de crédito</div>
+      {cartoes.map(k=>(
+        <div key={k.id} style={row}>
+          <span>▣</span>
+          <span style={{flex:1,fontSize:13,fontWeight:700,color:"#1a1a1a"}}>{k.nome} <span style={{fontSize:10,color:"#9ca3af",fontWeight:600}}>{k.bandeira?`· ${k.bandeira} `:""}· vence dia {k.vencimento||25}{k.limite?` · limite ${fmt(k.limite)}`:""}</span></span>
+          <button onClick={()=>setFk({...k})} style={mini}>✏</button>
+          <button onClick={()=>onDeleteCartao(k.id)} style={del}>✕</button>
+        </div>
+      ))}
+      {!fk&&<button onClick={()=>setFk({nome:"",bandeira:"",limite:"",vencimento:25})} style={{width:"100%",background:"#fff",border:"1px solid #1a1a1a",borderRadius:10,padding:"10px 0",color:"#1a1a1a",fontWeight:800,fontSize:12,cursor:"pointer",marginBottom:8}}>+ Adicionar cartão</button>}
+      {fk&&(
+        <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"12px",marginBottom:8}}>
+          <div style={{display:"flex",gap:10}}>
+            <Field label="Nome" half><input value={fk.nome} onChange={e=>setFk(p=>({...p,nome:e.target.value}))} placeholder="Ex: Nubank" style={S.inp}/></Field>
+            <Field label="Bandeira" half><input value={fk.bandeira} onChange={e=>setFk(p=>({...p,bandeira:e.target.value}))} placeholder="Visa, Master..." style={S.inp}/></Field>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Field label="Limite (R$)" half><input value={fk.limite} onChange={e=>setFk(p=>({...p,limite:e.target.value}))} type="number" placeholder="0,00" style={S.inp}/></Field>
+            <Field label="Vencimento (dia)" half><input value={fk.vencimento} onChange={e=>setFk(p=>({...p,vencimento:e.target.value}))} type="number" min="1" max="31" style={S.inp}/></Field>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setFk(null)} style={{...S.btn("#f3f4f6","#374151"),flex:1,padding:"10px 0"}}>Cancelar</button>
+            <button onClick={()=>{if(!(fk.nome||"").trim())return;onSaveCartao(fk);setFk(null);}} style={{...S.btn(PURPLE),flex:2,padding:"10px 0"}}>{fk.id?"Salvar":"Adicionar"}</button>
+          </div>
+        </div>
+      )}
+      <div style={{height:1,background:"#f0f0f5",margin:"10px 0 0"}}/>
+    </div>
+  );
+}
+
+// ─── Perfil: Categorias ──────────────────────────────────────────────────────
+function CategoriasSection({customCats=[],onSave,onDelete}){
+  const [fc,setFc]=useState(null);  // form categoria {label,icon,color,tipo}
+  const [fs,setFs]=useState(null);  // form subcategoria {label,parentId}
+  const customsTop=customCats.filter(c=>!c.sub);
+  const customsSub=customCats.filter(c=>c.sub);
+  const pais=[...CATS_RECEITA,...CATS_DESPESA,...customsTop];
+  const row={display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:"8px 12px",marginBottom:6};
+  return(
+    <div style={{marginBottom:18}}>
+      <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:4}}>🏷️ Categorias</div>
+      <div style={{fontSize:11,color:"#9ca3af",marginBottom:10}}>As categorias padrão não podem ser removidas. Crie as suas ou adicione subcategorias.</div>
+      {customsTop.map(c=>(
+        <div key={c.id} style={row}>
+          <span>{c.icon||"📦"}</span>
+          <span style={{flex:1,fontSize:13,fontWeight:700,color:"#1a1a1a"}}>{c.label} <span style={{fontSize:10,color:"#9ca3af",fontWeight:600}}>· {c.tipo==="receita"?"receita":"despesa"}</span></span>
+          <span style={{width:12,height:12,borderRadius:3,background:c.color||"#6b7280"}}/>
+          <button onClick={()=>onDelete(c.id)} style={{background:"#fef2f2",border:"none",borderRadius:8,color:"#ef4444",padding:"5px 7px",cursor:"pointer",fontSize:11}}>✕</button>
+        </div>
+      ))}
+      {customsSub.map(c=>{
+        const pai=pais.find(p=>p.id===c.parentId);
+        return(
+          <div key={c.id} style={{...row,marginLeft:18}}>
+            <span style={{fontSize:11,color:"#9ca3af"}}>↳</span>
+            <span style={{flex:1,fontSize:12,fontWeight:600,color:"#374151"}}>{c.label} <span style={{fontSize:10,color:"#9ca3af"}}>· em {pai?pai.label:c.parentId}</span></span>
+            <button onClick={()=>onDelete(c.id)} style={{background:"#fef2f2",border:"none",borderRadius:8,color:"#ef4444",padding:"5px 7px",cursor:"pointer",fontSize:11}}>✕</button>
+          </div>
+        );
+      })}
+      <div style={{display:"flex",gap:8,marginBottom:10}}>
+        {!fc&&<button onClick={()=>{setFs(null);setFc({label:"",icon:"📦",color:CORES_PALETA[1],tipo:"despesa"});}} style={{flex:1,background:"#fff",border:"1px solid #1a1a1a",borderRadius:10,padding:"10px 0",color:"#1a1a1a",fontWeight:800,fontSize:12,cursor:"pointer"}}>+ Categoria</button>}
+        {!fs&&<button onClick={()=>{setFc(null);setFs({label:"",parentId:pais[0]?pais[0].id:""});}} style={{flex:1,background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:"10px 0",color:"#374151",fontWeight:800,fontSize:12,cursor:"pointer"}}>+ Subcategoria</button>}
+      </div>
+      {fc&&(
+        <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"12px",marginBottom:10}}>
+          <div style={{display:"flex",gap:10}}>
+            <Field label="Nome" half><input value={fc.label} onChange={e=>setFc(p=>({...p,label:e.target.value}))} placeholder="Ex: Pets" style={S.inp}/></Field>
+            <Field label="Ícone (emoji)" half><input value={fc.icon} onChange={e=>setFc(p=>({...p,icon:e.target.value}))} maxLength={4} style={S.inp}/></Field>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Field label="Tipo" half>
+              <select value={fc.tipo} onChange={e=>setFc(p=>({...p,tipo:e.target.value}))} style={S.inp}><option value="despesa">Despesa</option><option value="receita">Receita</option></select>
+            </Field>
+            <Field label="Cor" half>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{CORES_PALETA.map(c=><button key={c} type="button" onClick={()=>setFc(p=>({...p,color:c}))} style={{width:22,height:22,borderRadius:5,background:c,border:fc.color===c?"2px solid #6b7280":"2px solid transparent",cursor:"pointer"}}/>)}</div>
+            </Field>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setFc(null)} style={{...S.btn("#f3f4f6","#374151"),flex:1,padding:"10px 0"}}>Cancelar</button>
+            <button onClick={()=>{if(!(fc.label||"").trim())return;onSave({label:fc.label.trim(),icon:fc.icon||"📦",color:fc.color,tipo:fc.tipo});setFc(null);}} style={{...S.btn(PURPLE),flex:2,padding:"10px 0"}}>Criar categoria</button>
+          </div>
+        </div>
+      )}
+      {fs&&(
+        <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"12px",marginBottom:10}}>
+          <Field label="Categoria pai"><select value={fs.parentId} onChange={e=>setFs(p=>({...p,parentId:e.target.value}))} style={S.inp}>{pais.map(p=><option key={p.id} value={p.id}>{p.icon} {p.label}</option>)}</select></Field>
+          <Field label="Nome da subcategoria"><input value={fs.label} onChange={e=>setFs(p=>({...p,label:e.target.value}))} placeholder="Ex: Ração" style={S.inp}/></Field>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setFs(null)} style={{...S.btn("#f3f4f6","#374151"),flex:1,padding:"10px 0"}}>Cancelar</button>
+            <button onClick={()=>{if(!(fs.label||"").trim()||!fs.parentId)return;onSave({label:fs.label.trim(),parentId:fs.parentId,sub:true});setFs(null);}} style={{...S.btn(PURPLE),flex:2,padding:"10px 0"}}>Criar subcategoria</button>
+          </div>
+        </div>
+      )}
+      <div style={{height:1,background:"#f0f0f5",margin:"6px 0 0"}}/>
+    </div>
+  );
+}
+
+// ─── Tab Perfil ───────────────────────────────────────────────────────────────
+function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,onDelMembro,config={},onSaveConfig,onAdd,onEdit,onDelete,onLogout,onReset,onLimparDup,convites=[],onConvidar,onCancelarConvite,contas=[],cartoes=[],onSaveConta,onDeleteConta,onSaveCartao,onDeleteCartao,onSaveCategoria,onDeleteCategoria,onRelatorioIR}){
   const [novoMembro,setNovoMembro]=useState("");
   const [copiado,setCopiado]=useState("");
   const addM2=()=>{ const n=novoMembro.trim(); if(!n) return; onAddMembro&&onAddMembro(n); setNovoMembro(""); };
@@ -1928,10 +2125,10 @@ function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,
   const copiarConvite=(t)=>{ try{ navigator.clipboard&&navigator.clipboard.writeText(t); }catch(e){} setCopiado(t); setTimeout(()=>setCopiado(""),1600); };
   return(
     <div>
-      <div style={{background:"linear-gradient(135deg,#475569,#94a3b8)",padding:"20px 20px 28px",borderRadius:"0 0 28px 28px"}}>
+      <div style={{background:"#1a1a1a",padding:"20px 20px 28px",borderRadius:"0 0 28px 28px"}}>
         <div style={{textAlign:"center"}}>
-          <div style={{color:"rgba(255,255,255,0.7)",fontSize:11,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600}}>Configurações</div>
-          <div style={{color:"#fff",fontSize:24,fontWeight:900,margin:"4px 0"}}>⚙️ Ajustes</div>
+          <div style={{color:"rgba(255,255,255,0.6)",fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600}}>Configurações</div>
+          <div style={{color:"#fff",fontSize:22,fontWeight:900,margin:"4px 0"}}>👤 Perfil</div>
           <div style={{color:"rgba(255,255,255,0.6)",fontSize:12}}>{user?.email} · família <strong>{familyCode}</strong></div>
         </div>
       </div>
@@ -1940,12 +2137,12 @@ function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,
         <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:10}}>👥 Membros</div>
         <div style={{display:"flex",gap:8,marginBottom:10}}>
           <input value={novoMembro} onChange={e=>setNovoMembro(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addM2()} placeholder="Nome do membro" style={S.inp}/>
-          <button onClick={addM2} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),padding:"0 18px",fontSize:18,flexShrink:0}}>+</button>
+          <button onClick={addM2} style={{...S.btn(`${PURPLE}`),padding:"0 18px",fontSize:18,flexShrink:0}}>+</button>
         </div>
         {membros.length===0
           ? <div style={{fontSize:12,color:"#9ca3af",marginBottom:18,padding:"0 2px"}}>Nenhum membro cadastrado.</div>
           : <div style={{marginBottom:18}}>{membros.map(m=>(
-              <div key={m.id} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1.5px solid #f0f0f5",borderRadius:10,padding:"8px 12px",marginBottom:6,boxShadow:"0 2px 6px rgba(0,0,0,0.04)"}}>
+              <div key={m.id} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:"8px 12px",marginBottom:6}}>
                 <span style={{flex:1,fontSize:13,fontWeight:700,color:"#1f2937"}}>👤 {m.nome}</span>
                 <button onClick={()=>onDelMembro&&onDelMembro(m.id)} style={{background:"#fef2f2",border:"none",borderRadius:8,color:"#ef4444",padding:"5px 7px",cursor:"pointer",fontSize:11}}>✕</button>
               </div>
@@ -1985,7 +2182,7 @@ function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,
                   const c=getCat(b.catId,customCats);
                   const inativo=b.ativo===false;
                   return(
-                    <div key={b.id} style={{background:"#fff",borderRadius:12,padding:"10px 12px",marginBottom:6,boxShadow:"0 2px 6px rgba(0,0,0,0.04)",display:"flex",alignItems:"center",gap:10,opacity:inativo?.55:1}}>
+                    <div key={b.id} style={{background:"#fff",borderRadius:12,padding:"10px 12px",marginBottom:6,border:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:10,opacity:inativo?.55:1}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:12,fontWeight:700,color:"#1f2937",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                           {b.desc}{tipo==="parcela_cartao"&&` (${b.parcelaAtual||1}/${b.parcelas||1})`}
@@ -2007,8 +2204,20 @@ function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,
             </div>
           );
         })}
+        {/* Contas e Cartões */}
+        <ContasCartoesSection contas={contas} cartoes={cartoes} onSaveConta={onSaveConta} onDeleteConta={onDeleteConta} onSaveCartao={onSaveCartao} onDeleteCartao={onDeleteCartao}/>
+
+        {/* Categorias */}
+        <CategoriasSection customCats={customCats} onSave={onSaveCategoria} onDelete={onDeleteCategoria}/>
+
         {/* Configurações Financeiras */}
         <ConfigFinanceira config={config} onSave={onSaveConfig}/>
+
+        {/* Relatório IR */}
+        <div style={{marginBottom:18}}>
+          <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:8}}>📋 Imposto de Renda</div>
+          <button onClick={onRelatorioIR} style={{width:"100%",background:"#fff",border:"1px solid #1a1a1a",borderRadius:10,padding:"12px 0",color:"#1a1a1a",fontWeight:800,fontSize:13,cursor:"pointer"}}>📋 Relatório IR</button>
+        </div>
 
         {/* Manutenção */}
         <div style={{marginBottom:18}}>
@@ -2038,34 +2247,41 @@ function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,
   );
 }
 
-function TransfForm({data,onSave,onClose,contas,viewMes,viewAno}){
-  const [f,setF]=useState({contaOrigem:"C6",contaDestino:"Inter",valor:"",desc:"",data:todayStr(),mes:viewMes,ano:viewAno,tipo:"transferencia",...data});
+function TransfForm({data,onSave,onClose,contas=[],cartoesNomes=[],dividas=[],viewMes,viewAno}){
+  const ehFatura=(data||{}).tipo==="fatura";
+  const [f,setF]=useState({contaOrigem:(contas[0]||{}).id||"",contaDestino:ehFatura?(cartoesNomes[0]||""):((contas[1]||contas[0]||{}).id||""),valor:"",desc:"",data:todayStr(),mes:viewMes,ano:viewAno,tipo:"transferencia",...data});
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const isFatura=f.tipo==="fatura";
+  const dividaSel=isFatura?((dividas.find(d=>d.nome===f.contaDestino)||{}).divida||0):0;
   return(
     <Modal title={isFatura?"Pagar Fatura do Cartão":"Transferência entre Contas"} onClose={onClose} maxW={420}>
       <div style={{background:isFatura?"#fff7ed":"#f0f4ff",border:`1.5px solid ${isFatura?"#fed7aa":"#c7d2fe"}`,borderRadius:14,padding:"12px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:12}}>
         <div style={{flex:1,background:"#fff",borderRadius:10,padding:"8px 12px",textAlign:"center"}}>
           <div style={{fontSize:10,color:"#9ca3af",marginBottom:2}}>De</div>
           <select value={f.contaOrigem} onChange={e=>set("contaOrigem",e.target.value)} style={{...S.inp,padding:"4px 8px",fontSize:12,textAlign:"center",background:"transparent",border:"none"}}>
-            {CONTAS_LISTA.map(c=><option key={c}>{c}</option>)}
+            {contas.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
           </select>
         </div>
-        <div style={{fontSize:20,color:isFatura?"#f97316":PURPLE}}>→</div>
+        <div style={{fontSize:20,color:"#1a1a1a"}}>→</div>
         <div style={{flex:1,background:"#fff",borderRadius:10,padding:"8px 12px",textAlign:"center"}}>
           <div style={{fontSize:10,color:"#9ca3af",marginBottom:2}}>{isFatura?"Cartão":"Para"}</div>
           {isFatura
-            ? <select value={f.contaDestino} onChange={e=>set("contaDestino",e.target.value)} style={{...S.inp,padding:"4px 8px",fontSize:12,textAlign:"center",background:"transparent",border:"none"}}>{CARTOES_LISTA.map(c=><option key={c}>{c}</option>)}</select>
-            : <select value={f.contaDestino} onChange={e=>set("contaDestino",e.target.value)} style={{...S.inp,padding:"4px 8px",fontSize:12,textAlign:"center",background:"transparent",border:"none"}}>{CONTAS_LISTA.filter(c=>c!==f.contaOrigem).map(c=><option key={c}>{c}</option>)}</select>
+            ? <select value={f.contaDestino} onChange={e=>set("contaDestino",e.target.value)} style={{...S.inp,padding:"4px 8px",fontSize:12,textAlign:"center",background:"transparent",border:"none"}}>{cartoesNomes.map(c=><option key={c}>{c}</option>)}</select>
+            : <select value={f.contaDestino} onChange={e=>set("contaDestino",e.target.value)} style={{...S.inp,padding:"4px 8px",fontSize:12,textAlign:"center",background:"transparent",border:"none"}}>{contas.filter(c=>c.id!==f.contaOrigem).map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select>
           }
         </div>
       </div>
+      {isFatura&&dividaSel>0&&(
+        <div onClick={()=>set("valor",String(dividaSel))} style={{fontSize:12,color:"#6b7280",marginBottom:10,cursor:"pointer"}}>
+          Dívida atual do {f.contaDestino}: <strong style={{color:"#ef4444"}}>{fmt(dividaSel)}</strong> · toque para preencher
+        </div>
+      )}
       <div style={{display:"flex",gap:10}}>
         <Field label="Valor (R$)" half><input value={f.valor} onChange={e=>set("valor",e.target.value)} type="number" placeholder="0,00" style={S.inp} autoFocus/></Field>
         <Field label="Data" half><input value={f.data||""} onChange={e=>{set("data",e.target.value);if(e.target.value){const d=new Date(e.target.value+"T00:00:00");set("mes",d.getMonth());set("ano",d.getFullYear());}}} type="date" style={S.inp}/></Field>
       </div>
       <Field label="Descrição (opcional)"><input value={f.desc} onChange={e=>set("desc",e.target.value)} placeholder={isFatura?"Pagamento fatura":"Descrição da transferência"} style={S.inp}/></Field>
-      <button onClick={()=>onSave(f)} style={{...S.btn(isFatura?"linear-gradient(135deg,#f97316,#ea580c)":`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",padding:"13px 0",fontSize:14,marginTop:4}}>
+      <button onClick={()=>onSave(f)} style={{...S.btn(isFatura?"#1a1a1a":`${PURPLE}`),width:"100%",padding:"13px 0",fontSize:14,marginTop:4}}>
         ✓ {isFatura?"Registrar pagamento":"Transferir"}
       </button>
     </Modal>
@@ -2093,7 +2309,7 @@ function InvestForm({data,onSave,onClose}){
         <Field label="Saldo atual (R$)" half><input value={f.saldoAtual} onChange={e=>set("saldoAtual",e.target.value)} type="number" placeholder="0,00" style={S.inp}/></Field>
       </div>
       <Field label="Última atualização"><input value={f.ultimaAtualizacao||""} onChange={e=>set("ultimaAtualizacao",e.target.value)} type="date" style={S.inp}/></Field>
-      <button onClick={()=>onSave(f)} style={{...S.btn(`linear-gradient(135deg,#4338ca,#818cf8)`),width:"100%",padding:"13px 0",fontSize:14,marginTop:4}}>
+      <button onClick={()=>onSave(f)} style={{...S.btn(`#1a1a1a`),width:"100%",padding:"13px 0",fontSize:14,marginTop:4}}>
         {f.id?"Salvar":"✓ Adicionar"}
       </button>
     </Modal>
@@ -2116,7 +2332,7 @@ function RelatorioIR({lancs,onClose}){
           {anos.map(a=><option key={a}>{a}</option>)}
         </select>
       </div>
-      <div style={{background:`linear-gradient(135deg,#4338ca,#818cf8)`,borderRadius:16,padding:"16px",marginBottom:16,textAlign:"center"}}>
+      <div style={{background:`#1a1a1a`,borderRadius:16,padding:"16px",marginBottom:16,textAlign:"center"}}>
         <div style={{color:"rgba(255,255,255,0.7)",fontSize:11,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600}}>Total dedutível {anoSel}</div>
         <div style={{color:"#fff",fontSize:32,fontWeight:900,letterSpacing:"-1px",margin:"4px 0"}}>{fmt(total)}</div>
         <div style={{color:"rgba(255,255,255,0.6)",fontSize:11}}>{dedutiveis.length} lançamento(s)</div>
