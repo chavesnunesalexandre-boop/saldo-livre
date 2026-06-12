@@ -429,9 +429,19 @@ function MainApp({familyCode,user,onLogout}){
     })));
     toast2(`${items.length} lançamento(s) importado(s)!`); setModal(null);
   };
-  const importarLancamentos=async(arr)=>{
+  const importarLancamentos=async(arr,meta={})=>{
     const base=Date.now();
     await Promise.all(arr.map((l,i)=>setDoc(doc(db,fp("lancamentos"),String(base+i)),{...l,updatedAt:base+i})));
+    // Conta corrente: atualiza saldo = saldoAtual + entradas - saidas
+    if(meta.contexto==="conta"&&meta.contaId&&Number.isFinite(meta.delta)&&meta.delta!==0){
+      const c=contas.find(x=>x.id===meta.contaId);
+      const atual=c?+c.saldo||0:0;
+      await setDoc(doc(db,fp("contas"),meta.contaId),{id:meta.contaId,saldo:atual+meta.delta,updatedAt:Date.now()},{merge:true});
+    }
+    // Pagamento de fatura: marca fatura do cartão como paga
+    if(meta.faturasPagas&&meta.faturasPagas.length){
+      await Promise.all(meta.faturasPagas.map(f=>setDoc(doc(db,fp("faturasPagas"),`${f.cartao}-${f.mes}-${f.ano}`),{cartao:f.cartao,mes:f.mes,ano:f.ano,valor:f.valor,pago:true,data:Date.now()},{merge:true})));
+    }
     toast2(`${arr.length} lançamento(s) importado(s)!`); setModal(null);
   };
   const saveBase=async(data)=>{
@@ -1473,96 +1483,159 @@ function ConfirmPendenteModal({pendente,onConfirm,onClose}){
 }
 
 // ─── Importar Extrato por Foto ───────────────────────────────────────────────
+const BANCOS_IMPORT=["C6","XP","Nubank","Inter","Santander","Outro"];
+const CARTOES_DETECT=["C6","XP","Nubank","Inter","Santander"];
+const RX_PGTO_FAT=/pgto\s*fat|pagamento\s*fatura|pag\s*fatura/i;
+const CAT_IDS_VALIDAS=new Set([...CATS_RECEITA,...CATS_DESPESA].map(c=>c.id));
+const _normTxt=(s)=>(s||"").toLowerCase().normalize("NFD").replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
+function _lev(a,b){ const m=a.length,n=b.length; if(!m) return n; if(!n) return m; let prev=Array.from({length:n+1},(_,i)=>i); for(let i=1;i<=m;i++){ const cur=[i]; for(let j=1;j<=n;j++) cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1)); prev=cur; } return prev[n]; }
+function descSimilar(a,b){ const x=_normTxt(a),y=_normTxt(b); if(!x||!y) return 0; if(x===y) return 1; return 1-_lev(x,y)/Math.max(x.length,y.length); }
+function ehDuplicata(it,lista){ return lista.some(e=>e.data===it.data&&Math.abs((+e.valor||0)-(+it.valor||0))<0.01&&descSimilar(e.desc,it.desc)>=0.8); }
+function detectarBanco(txt,lista){ const b=(txt||"").toLowerCase(); const f=lista.find(c=>b.includes(c.toLowerCase())); if(f) return f; if(b.includes("nu")) return "Nubank"; return ""; }
 function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno}){
-  const isCartao=contexto==="cartao";
+  const [tipo,setTipo]=useState(contexto);
+  const isCartao=tipo==="cartao";
   const grad=isCartao?"linear-gradient(135deg,#ea580c,#fb923c)":"linear-gradient(135deg,#2563eb,#60a5fa)";
-  const [file,setFile]=useState(null);
-  const [preview,setPreview]=useState("");
+  const [banco,setBanco]=useState("");
+  const [files,setFiles]=useState([]);
   const [loading,setLoading]=useState(false);
+  const [progresso,setProgresso]=useState("");
   const [erro,setErro]=useState("");
-  const [resultado,setResultado]=useState(null);
+  const [resultado,setResultado]=useState(false);
+  const [bancoDetectado,setBancoDetectado]=useState("");
+  const [periodo,setPeriodo]=useState("");
   const [itens,setItens]=useState([]);
-  const [cartao,setCartao]=useState(CARTOES_LISTA[0]);
-  const [contaId,setContaId]=useState(CONTAS_LISTA[0]);
   const [mes,setMes]=useState(viewMes);
   const [ano,setAno]=useState(viewAno);
 
-  const escolher=(e)=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; setFile(f); setPreview(URL.createObjectURL(f)); setResultado(null); setItens([]); setErro(""); };
-  const detectarCartao=(banco)=>{ const b=(banco||"").toLowerCase(); const f=CARTOES_LISTA.find(c=>b.includes(c.toLowerCase())); if(f) return f; if(b.includes("nu")) return "Nubank"; return CARTOES_LISTA[0]; };
+  const escolher=(e)=>{ const fs=Array.from(e.target.files||[]); if(!fs.length) return; setFiles(fs); setResultado(false); setItens([]); setErro(""); };
 
   const extrair=async()=>{
-    if(!file) return; setErro(""); setLoading(true);
+    if(!files.length) return; setErro(""); setLoading(true);
+    const acc=[]; let bDet="", per="";
     try{
-      const {base64,mediaType}=await fileToResizedBase64(file,1600,0.75);
-      const r=await fetch("/api/importar-extrato",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({imagemBase64:base64,mediaType,contexto})});
-      const j=await r.json();
-      if(j.error) throw new Error(j.error);
-      const lista=(j.itens||[]).map((it,i)=>{ const inflow=it.tipo==="entrada"||it.tipo==="estorno"; return { _i:i, sel:it.tipo!=="estorno", data:it.data||"", desc:it.desc||"", valor:Math.abs(+it.valor||0), tipo:it.tipo||(isCartao?"compra":"saida"), parcela:it.parcela||null, titular:it.titular||null, catId:inflow?"":sugerirCategoria(it.desc), membro:membros[0]||"" }; });
-      setResultado(j); setItens(lista);
-      if(isCartao&&j.banco) setCartao(detectarCartao(j.banco));
-      if(!lista.length) setErro("Nenhuma transação reconhecida. Tente uma imagem mais nítida.");
+      for(let k=0;k<files.length;k++){
+        setProgresso(`Analisando imagem ${k+1} de ${files.length}...`);
+        const {base64,mediaType}=await fileToResizedBase64(files[k],1600,0.75);
+        const r=await fetch("/api/importar-extrato",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({imagemBase64:base64,mediaType,contexto:tipo})});
+        const j=await r.json();
+        if(j.error) throw new Error(j.error);
+        if(!bDet&&j.banco) bDet=j.banco;
+        if(!per&&j.periodo) per=j.periodo;
+        (j.itens||[]).forEach(it=>{
+          const pag=!isCartao&&RX_PGTO_FAT.test(it.desc||"");
+          const inflow=it.tipo==="entrada"||it.tipo==="estorno";
+          const novo={
+            data:it.data||"", desc:it.desc||"", valor:Math.abs(+it.valor||0),
+            tipo:pag?"pagamento_fatura":(it.tipo||(isCartao?"compra":"saida")),
+            parcela:it.parcela||null, titular:it.titular||null,
+            catId:CAT_IDS_VALIDAS.has(it.categoria)?it.categoria:(inflow?"":sugerirCategoria(it.desc)),
+            membro:membros[0]||"",
+            cartaoFatura:pag?(detectarBanco(it.desc,CARTOES_DETECT)||CARTOES_LISTA[0]):null,
+          };
+          novo.dup=ehDuplicata(novo,acc);
+          novo.sel=!novo.dup&&it.tipo!=="estorno";
+          acc.push(novo);
+        });
+      }
+      acc.forEach((it,i)=>{it._i=i;});
+      setItens(acc); setBancoDetectado(bDet); setPeriodo(per); setResultado(true);
+      if(!banco){ const m=detectarBanco(bDet,BANCOS_IMPORT); if(m) setBanco(m); }
+      if(!acc.length) setErro("Nenhuma transação reconhecida. Tente imagens mais nítidas.");
     }catch(e){ setErro("Falha ao extrair: "+e.message); }
-    setLoading(false);
+    setLoading(false); setProgresso("");
   };
 
   const upd=(i,k,v)=>setItens(arr=>arr.map(it=>it._i===i?{...it,[k]:v}:it));
   const selecionados=itens.filter(i=>i.sel);
   const totalSel=selecionados.reduce((s,it)=>s+(it.tipo==="estorno"?-it.valor:+it.valor||0),0);
+  const dups=itens.filter(i=>i.dup).length;
 
   const importar=()=>{
-    const arr=selecionados.map(it=>{
+    const arr=[]; const faturasPagas=[]; let entradas=0,saidas=0;
+    selecionados.forEach(it=>{
+      const v=Math.abs(+it.valor||0); const mem=it.membro||membros[0]||"";
       if(isCartao){
         const est=it.tipo==="estorno";
-        return { tipo:"cartao", desc:it.desc, valor:est?-Math.abs(+it.valor||0):Math.abs(+it.valor||0), catId:it.catId, membro:it.membro||membros[0]||"", cartao, mes:+mes, ano:+ano, mesFatura:+mes, anoFatura:+ano, parcelas:1, status:"confirmado", origem:"extrato", data:todayStr() };
+        arr.push({ tipo:"cartao", desc:it.desc, valor:est?-v:v, catId:it.catId, membro:mem, cartao:banco, mes:+mes, ano:+ano, mesFatura:+mes, anoFatura:+ano, parcelas:1, status:"confirmado", origem:"extrato", data:todayStr() });
+      } else if(it.tipo==="pagamento_fatura"){
+        saidas+=v;
+        arr.push({ tipo:"saida", desc:it.desc, valor:v, catId:it.catId||"outras", membro:mem, contaId:banco, formaPag:"Pagamento fatura", mes:+mes, ano:+ano, data:todayStr(), status:"confirmado", origem:"extrato", pagamentoFatura:true, cartaoFatura:it.cartaoFatura||null });
+        if(it.cartaoFatura) faturasPagas.push({cartao:it.cartaoFatura,mes:+mes,ano:+ano,valor:v});
+      } else {
+        const t=it.tipo==="entrada"?"entrada":"saida";
+        if(t==="entrada") entradas+=v; else saidas+=v;
+        arr.push({ tipo:t, desc:it.desc, valor:v, catId:it.catId, membro:mem, contaId:banco, formaPag:"Extrato", mes:+mes, ano:+ano, data:todayStr(), status:"confirmado", origem:"extrato" });
       }
-      const t=it.tipo==="entrada"?"entrada":"saida";
-      return { tipo:t, desc:it.desc, valor:Math.abs(+it.valor||0), catId:it.catId, membro:it.membro||membros[0]||"", contaId, formaPag:"Extrato", mes:+mes, ano:+ano, data:todayStr(), status:"confirmado", origem:"extrato" };
     });
-    if(arr.length) onImport(arr);
+    if(!arr.length) return;
+    const meta=isCartao?{contexto:"cartao"}:{contexto:"conta",contaId:banco,delta:entradas-saidas,faturasPagas};
+    onImport(arr,meta);
   };
 
   return(
-    <Modal title={`📸 Importar ${isCartao?"fatura do cartão":"extrato da conta"}`} onClose={onClose} maxW={520}>
+    <Modal title="📸 Importar extrato" onClose={onClose} maxW={520}>
       {!resultado?(
         <>
-          <div style={{border:"2px dashed #c7d2fe",borderRadius:16,padding:preview?12:"28px 16px",textAlign:"center",background:"#f8f9ff",marginBottom:14}}>
-            {preview
-              ? <img src={preview} alt="prévia" style={{maxWidth:"100%",maxHeight:280,borderRadius:10,display:"block",margin:"0 auto 12px"}}/>
-              : <><div style={{fontSize:30,marginBottom:8}}>📸</div><div style={{fontSize:12,color:"#9ca3af",marginBottom:12}}>Print ou foto da {isCartao?"fatura do cartão":"tela do extrato"}</div></>
-            }
-            <input type="file" id="importar-extrato-input" accept="image/*" onChange={escolher} style={{display:"none"}}/>
-            <label htmlFor="importar-extrato-input" style={{...S.btn(grad),display:"inline-block",padding:"11px 22px",fontSize:13,cursor:"pointer"}}>
-              📸 {preview?"Trocar imagem":"Selecionar print ou foto"}
-            </label>
-          </div>
-          {erro&&<div style={{background:"#fef2f2",border:"1.5px solid #fecaca",color:"#b91c1c",borderRadius:12,padding:"10px 12px",fontSize:12,marginBottom:12}}>{erro}</div>}
-          <button onClick={extrair} disabled={!file||loading} style={{...S.btn(grad),width:"100%",padding:"13px 0",fontSize:14,opacity:(!file||loading)?.5:1}}>
-            {loading?"Analisando imagem…":"🤖 Extrair transações"}
-          </button>
+          <Field label="Tipo">
+            <div style={{display:"flex",gap:8}}>
+              {[["cartao","💳 Cartão de crédito"],["conta","🏦 Conta corrente"]].map(([k,l])=>(
+                <button key={k} type="button" onClick={()=>setTipo(k)} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1.5px solid ${tipo===k?(k==="cartao"?"#ea580c":"#2563eb"):"#e0e0f0"}`,background:tipo===k?(k==="cartao"?"#fff7ed":"#eff6ff"):"#fff",color:tipo===k?(k==="cartao"?"#ea580c":"#2563eb"):"#6b7280",fontWeight:700,fontSize:12,cursor:"pointer"}}>{l}</button>
+              ))}
+            </div>
+          </Field>
+          <Field label={isCartao?"Cartão":"Banco / Conta"}>
+            <select value={banco} onChange={e=>setBanco(e.target.value)} style={S.inp}>
+              <option value="">— Selecione —</option>
+              {BANCOS_IMPORT.map(b=><option key={b} value={b}>{b}</option>)}
+            </select>
+          </Field>
+          {!banco?(
+            <div style={{textAlign:"center",color:"#9ca3af",fontSize:12,padding:"18px 0"}}>Selecione o tipo e o {isCartao?"cartão":"banco"} para continuar.</div>
+          ):(
+            <>
+              <div style={{border:"2px dashed #c7d2fe",borderRadius:16,padding:files.length?12:"24px 16px",textAlign:"center",background:"#f8f9ff",margin:"4px 0 12px"}}>
+                {files.length>0&&(
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center",marginBottom:12}}>
+                    {files.slice(0,8).map((f,i)=><img key={i} src={URL.createObjectURL(f)} alt="" style={{width:52,height:52,objectFit:"cover",borderRadius:8}}/>)}
+                  </div>
+                )}
+                <div style={{fontSize:12,color:"#9ca3af",marginBottom:files.length?8:12}}>{files.length?`${files.length} imagem(ns) selecionada(s)`:`Selecione 1 ou mais prints da ${isCartao?"fatura":"tela do extrato"}`}</div>
+                <input type="file" id="importar-extrato-input" accept="image/*" multiple onChange={escolher} style={{display:"none"}}/>
+                <label htmlFor="importar-extrato-input" style={{...S.btn(grad),display:"inline-block",padding:"11px 22px",fontSize:13,cursor:"pointer"}}>📸 {files.length?"Trocar imagens":"Selecionar imagens"}</label>
+              </div>
+              {progresso&&<div style={{textAlign:"center",color:PURPLE,fontWeight:700,fontSize:13,marginBottom:10}}>{progresso}</div>}
+              {erro&&<div style={{background:"#fef2f2",border:"1.5px solid #fecaca",color:"#b91c1c",borderRadius:12,padding:"10px 12px",fontSize:12,marginBottom:12}}>{erro}</div>}
+              <button onClick={extrair} disabled={!files.length||loading} style={{...S.btn(grad),width:"100%",padding:"13px 0",fontSize:14,opacity:(!files.length||loading)?.5:1}}>
+                {loading?(progresso||"Analisando…"):"🤖 Extrair transações"}
+              </button>
+            </>
+          )}
         </>
       ):(
         <>
           <div style={{background:"#f8f9ff",border:"1.5px solid #e0e0f0",borderRadius:12,padding:"10px 12px",marginBottom:12}}>
-            <div style={{fontSize:11,color:"#6b7280",marginBottom:8,fontWeight:600}}>🏦 {resultado.banco||"Banco"}{resultado.periodo?` · ${resultado.periodo}`:""}</div>
+            <div style={{fontSize:11,color:"#6b7280",marginBottom:8,fontWeight:600}}>🏦 {bancoDetectado||banco}{periodo?` · ${periodo}`:""}</div>
             <div style={{display:"flex",gap:8}}>
-              {isCartao
-                ? <select value={cartao} onChange={e=>setCartao(e.target.value)} style={{...S.inp,fontSize:12,flex:1}}>{CARTOES_LISTA.map(c=><option key={c}>{c}</option>)}</select>
-                : <select value={contaId} onChange={e=>setContaId(e.target.value)} style={{...S.inp,fontSize:12,flex:1}}>{CONTAS_LISTA.map(c=><option key={c}>{c}</option>)}</select>}
+              <select value={banco} onChange={e=>setBanco(e.target.value)} style={{...S.inp,fontSize:12,flex:1}}>{BANCOS_IMPORT.map(b=><option key={b}>{b}</option>)}</select>
               <select value={mes} onChange={e=>setMes(+e.target.value)} style={{...S.inp,fontSize:12,width:118}}>{MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}</select>
               <input value={ano} onChange={e=>setAno(+e.target.value)} type="number" style={{...S.inp,fontSize:12,width:76}}/>
             </div>
           </div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,color:"#6b7280",marginBottom:10}}>
-            <span>{selecionados.length} de {itens.length} selecionados</span>
+            <span>{selecionados.length} de {itens.length} selecionados{dups>0?` · ${dups} duplicata(s)`:""}</span>
             <span style={{fontWeight:800,color:"#1f2937"}}>{fmt(totalSel)}</span>
           </div>
           <div style={{maxHeight:"42vh",overflowY:"auto",marginBottom:14}}>
             {itens.map(it=>{
               const est=it.tipo==="estorno";
+              const pag=it.tipo==="pagamento_fatura";
               const inflow=it.tipo==="entrada"||est;
               const cats=inflow?CATS_RECEITA:CATS_DESPESA;
+              const bg=it.dup?"#fffbeb":est?"#fef2f2":pag?"#eff6ff":"#fff";
+              const bd=it.dup?"#fde68a":est?"#fecaca":pag?"#bfdbfe":"#f0f0f5";
               return(
-                <div key={it._i} style={{background:est?"#fef2f2":"#fff",border:`1.5px solid ${est?"#fecaca":"#f0f0f5"}`,borderRadius:12,padding:"10px 12px",marginBottom:8,opacity:it.sel?1:.5}}>
+                <div key={it._i} style={{background:bg,border:`1.5px solid ${bd}`,borderRadius:12,padding:"10px 12px",marginBottom:8,opacity:it.sel?1:.55}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
                     <input type="checkbox" checked={it.sel} onChange={e=>upd(it._i,"sel",e.target.checked)} style={{width:16,height:16,accentColor:PURPLE,flexShrink:0}}/>
                     <input value={it.desc} onChange={e=>upd(it._i,"desc",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:12,flex:1}}/>
@@ -1572,13 +1645,17 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno})
                     {it.data&&<span style={{fontSize:10,color:"#9ca3af",fontWeight:700}}>📅 {it.data}</span>}
                     {it.parcela&&<span style={{fontSize:10,fontWeight:800,color:"#f97316",background:"#ffedd5",borderRadius:6,padding:"1px 6px"}}>▣ {it.parcela}</span>}
                     {est&&<span style={{fontSize:10,fontWeight:800,color:"#ef4444",background:"#fee2e2",borderRadius:6,padding:"1px 6px"}}>↩ estorno</span>}
+                    {pag&&<span style={{fontSize:10,fontWeight:800,color:"#2563eb",background:"#dbeafe",borderRadius:6,padding:"1px 6px"}}>💳 Pag. Fatura</span>}
+                    {it.dup&&<span style={{fontSize:10,fontWeight:800,color:"#b45309",background:"#fef3c7",borderRadius:6,padding:"1px 6px"}}>⚠️ Possível duplicata</span>}
                     {it.titular&&<span style={{fontSize:10,color:"#9ca3af"}}>· {it.titular}</span>}
                   </div>
                   <div style={{display:"flex",gap:6,paddingLeft:24}}>
-                    <select value={it.catId} onChange={e=>upd(it._i,"catId",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:1}}>
-                      <option value="">— Categoria —</option>
-                      {cats.map(c=><option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
-                    </select>
+                    {pag
+                      ? <select value={it.cartaoFatura||CARTOES_LISTA[0]} onChange={e=>upd(it._i,"cartaoFatura",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:1}}>{CARTOES_DETECT.map(c=><option key={c}>{c}</option>)}</select>
+                      : <select value={it.catId} onChange={e=>upd(it._i,"catId",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:1}}>
+                          <option value="">— Categoria —</option>
+                          {cats.map(c=><option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+                        </select>}
                     <select value={it.membro} onChange={e=>upd(it._i,"membro",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,width:108}}>
                       {membros.length?membros.map(m=><option key={m}>{m}</option>):<option value="">—</option>}
                     </select>
@@ -1591,7 +1668,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno})
           <button onClick={importar} disabled={!selecionados.length} style={{...S.btn(grad),width:"100%",padding:"13px 0",fontSize:14,opacity:selecionados.length?1:.5}}>
             ✓ Importar {selecionados.length} selecionado(s)
           </button>
-          <button onClick={()=>{setResultado(null);setItens([]);setFile(null);setPreview("");setErro("");}} style={{...S.btn("#f3f4f6","#374151"),width:"100%",padding:"11px 0",marginTop:8}}>← Nova imagem</button>
+          <button onClick={()=>{setResultado(false);setItens([]);setFiles([]);setErro("");}} style={{...S.btn("#f3f4f6","#374151"),width:"100%",padding:"11px 0",marginTop:8}}>← Novas imagens</button>
         </>
       )}
     </Modal>

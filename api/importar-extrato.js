@@ -11,10 +11,25 @@ const SYSTEM = `Você é um extrator de dados financeiros. Analise a imagem de u
     valor: número positivo,
     tipo: 'entrada' ou 'saida' (para conta) ou 'compra' ou 'estorno' (para cartão),
     parcela: 'X/Y' ou null,
-    titular: nome do titular se visível ou null
+    titular: nome do titular se visível ou null,
+    categoria: id da categoria sugerida (regras abaixo) ou ""
   }]
 }
-Ignore totais, saldos e cabeçalhos. Extraia apenas transações individuais.`;
+Ignore totais, saldos e cabeçalhos. Extraia apenas transações individuais.
+
+REGRAS DE CATEGORIZAÇÃO (defina "categoria" a partir da descrição):
+- APPLE, MICROSOFT, ADOBE, SPOTIFY, NETFLIX, AMAZON PRIME → assinatura
+- UBER, 99, BRB MOBILIDA, ONIBUS, METRO → transporte
+- DROGASIL, FARMACIA, DROGARIA, ULTRAFARMA → medicamento
+- HOSPITAL, CLINICA, MEDICO, ODONTO, LABORATORIO → saude
+- SUPERMERCADO, MERCADO, ATACADAO, HORTIFRUTI → alimentacao_r
+- RESTAURANTE, LANCHONETE, HAMBURGUER, PIZZA, SUSHI → alimentacao_nr
+- AMAZON, SHOPEE, SHEIN, MERCADOLIVRE → outras
+- ESCOLA, FACULDADE, CURSO, EDUCACAO → educacao
+- FARMAIS, ULTRABOX → verifique o contexto (farmácia → medicamento; academia → saude)
+- POSTO, GASOLINA, COMBUSTIVEL → veiculo
+- RENNER, ZARA, C&A, LOJAS → vestuario
+Use exatamente um desses ids quando houver correspondência clara. Caso contrário, ou para entradas/recebimentos, use "".`;
 
 const SCHEMA = {
   type: "object",
@@ -33,8 +48,9 @@ const SCHEMA = {
           tipo: { type: "string", enum: ["entrada", "saida", "compra", "estorno"] },
           parcela: { anyOf: [{ type: "string" }, { type: "null" }] },
           titular: { anyOf: [{ type: "string" }, { type: "null" }] },
+          categoria: { type: "string" },
         },
-        required: ["data", "desc", "valor", "tipo", "parcela", "titular"],
+        required: ["data", "desc", "valor", "tipo", "parcela", "titular", "categoria"],
         additionalProperties: false,
       },
     },
