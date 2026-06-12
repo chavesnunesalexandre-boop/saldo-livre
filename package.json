@@ -3,6 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.1",
     "firebase": "^10.14.1",
     "html5-qrcode": "^2.3.8",
     "react": "^18.3.1",

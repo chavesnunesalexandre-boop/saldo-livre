@@ -908,30 +908,59 @@ function sugerirCategoria(nome){
   for(const g of NFE_KEYWORDS){ if(g.kws.some(k=>n.includes(k))) return g.cat; }
   return "alimentacao_nr";
 }
+// Parser NF-e/NFC-e — cobre o layout padrao "Projeto NFC-e" adotado por SP, DF e MG
+// (tabela #tabResult com spans .txtTit / .Rqtd / .RvlUnit / .valor) e variacoes genericas.
 function parseNFe(html){
   try{
     const docp=new DOMParser().parseFromString(html||"","text/html");
-    const num=t=>{ if(!t) return 0; const s=t.replace(/[^0-9.,]/g,"").replace(/\.(?=\d{3}(\D|$))/g,"").replace(",","."); return parseFloat(s)||0; };
+    const num=t=>{ if(t==null) return 0; const s=String(t).replace(/[^0-9.,]/g,"").replace(/\.(?=\d{3}(\D|$))/g,"").replace(",","."); return parseFloat(s)||0; };
+    const txt=el=>el?el.textContent.replace(/\s+/g," ").trim():"";
     const itens=[];
+    // Linhas de itens: tabela padrao #tabResult; senao qualquer <tr> que contenha .txtTit
     let rows=docp.querySelectorAll("#tabResult tr");
-    if(!rows.length) rows=docp.querySelectorAll("table tr");
+    if(!rows.length) rows=docp.querySelectorAll("tr");
     rows.forEach(tr=>{
       const nomeEl=tr.querySelector(".txtTit, .txtTit2");
       if(!nomeEl) return;
-      const nome=nomeEl.textContent.replace(/\s+/g," ").trim();
+      const nome=txt(nomeEl).replace(/\s*\(?\s*c[oó]digo:?.*$/i,"").trim();
       if(!nome) return;
-      const valorEl=tr.querySelector(".valor");
-      const qtdEl=tr.querySelector(".Rqtd");
-      itens.push({nome, valor:num(valorEl&&valorEl.textContent), qtd:num(qtdEl&&qtdEl.textContent)||1, catId:sugerirCategoria(nome)});
+      const qtd=num(txt(tr.querySelector(".Rqtd")))||1;
+      const vlUnit=num(txt(tr.querySelector(".RvlUnit")));
+      let valor=num(txt(tr.querySelector(".valor")));
+      if(!valor&&vlUnit) valor=Math.round(vlUnit*qtd*100)/100;
+      itens.push({nome, qtd, vlUnit, valor, catId:sugerirCategoria(nome)});
     });
     return itens;
   }catch(e){ return []; }
+}
+
+// Redimensiona a foto no cliente antes de enviar a IA (reduz payload e custo de tokens).
+function fileToResizedBase64(file, maxDim=1500, quality=0.72){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    const url=URL.createObjectURL(file);
+    img.onload=()=>{
+      let w=img.width, h=img.height;
+      if(w>=h&&w>maxDim){ h=Math.round(h*maxDim/w); w=maxDim; }
+      else if(h>maxDim){ w=Math.round(w*maxDim/h); h=maxDim; }
+      const c=document.createElement("canvas");
+      c.width=w; c.height=h;
+      c.getContext("2d").drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      const dataUrl=c.toDataURL("image/jpeg",quality);
+      resolve({base64:dataUrl.split(",")[1], mediaType:"image/jpeg"});
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error("Nao foi possivel ler a imagem")); };
+    img.src=url;
+  });
 }
 function LeitorNFe({allCats,onClose,onImport}){
   const [aba,setAba]=useState("qr");
   const [itens,setItens]=useState(null);
   const [loading,setLoading]=useState(false);
+  const [loadingIA,setLoadingIA]=useState(false);
   const [erro,setErro]=useState("");
+  const [fotoFile,setFotoFile]=useState(null);
 
   const buscarNFe=async(url)=>{
     setErro(""); setLoading(true);
@@ -940,8 +969,8 @@ function LeitorNFe({allCats,onClose,onImport}){
       const j=await r.json();
       if(j.error) throw new Error(j.error);
       const parsed=parseNFe(j.html||"");
-      if(!parsed.length){ setErro("Nenhum item encontrado na nota."); setItens([]); }
-      else setItens(parsed);
+      if(parsed.length) setItens(parsed);
+      else setErro("Não encontrei os itens no HTML da nota — alguns portais carregam via JavaScript. Use a aba Foto + IA abaixo.");
     }catch(e){ setErro("Falha ao buscar a nota: "+e.message); }
     setLoading(false);
   };
@@ -962,12 +991,27 @@ function LeitorNFe({allCats,onClose,onImport}){
   const handleFoto=async(e)=>{
     const file=e.target.files&&e.target.files[0];
     if(!file) return;
-    setErro(""); setLoading(true);
+    setFotoFile(file); setErro(""); setLoading(true);
     try{
       const h=new Html5Qrcode("nfe-file-reader");
       const decoded=await h.scanFile(file,false);
       await buscarNFe(decoded);
-    }catch(err){ setErro("Não foi possível ler o QR Code da foto."); setLoading(false); }
+    }catch(err){ setErro("Não li o QR Code da foto. Você ainda pode extrair os itens com IA abaixo."); setLoading(false); }
+  };
+
+  const analisarComIA=async()=>{
+    if(!fotoFile) return;
+    setErro(""); setLoadingIA(true);
+    try{
+      const {base64,mediaType}=await fileToResizedBase64(fotoFile);
+      const r=await fetch("/api/nfe-vision",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:base64,mediaType})});
+      const j=await r.json();
+      if(j.error) throw new Error(j.error);
+      const arr=(j.itens||[]).map(it=>({nome:it.nome,qtd:it.qtd||1,valor:+it.valor||0,catId:sugerirCategoria(it.nome)}));
+      if(arr.length) setItens(arr);
+      else setErro("A IA não encontrou itens. Tente uma foto mais nítida do cupom inteiro.");
+    }catch(e){ setErro("Falha na extração por IA: "+e.message); }
+    setLoadingIA(false);
   };
 
   const setItemCat=(i,catId)=>setItens(arr=>arr.map((it,j)=>j===i?{...it,catId}:it));
@@ -1001,6 +1045,11 @@ function LeitorNFe({allCats,onClose,onImport}){
           )}
           {loading&&<div style={{textAlign:"center",color:PURPLE,fontWeight:700,marginTop:14}}>Buscando dados da nota…</div>}
           {erro&&<div style={{background:"#fef2f2",border:"1.5px solid #fecaca",color:"#b91c1c",borderRadius:12,padding:"10px 12px",fontSize:12,marginTop:14}}>{erro}</div>}
+          {fotoFile&&!loading&&(
+            <button type="button" onClick={analisarComIA} disabled={loadingIA} style={{...S.btn("linear-gradient(135deg,#7c3aed,#a78bfa)"),width:"100%",padding:"12px 0",fontSize:13,marginTop:12,opacity:loadingIA?.7:1}}>
+              {loadingIA?"🤖 Analisando a foto com IA…":"🤖 Extrair itens da foto com IA"}
+            </button>
+          )}
         </>
       )}
       {itens&&(
