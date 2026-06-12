@@ -51,6 +51,45 @@ const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String
 const famPath = (fc,col) => `familias/${fc}/${col}`;
 const cmpMonth = (m1,a1,m2,a2) => a1*12+m1-(a2*12+m2);
 
+// ─── Cadastro Base ────────────────────────────────────────────────────────────
+const BASE_TIPOS = {
+  receita_fixa:   {label:"Receita Fixa",     icon:"💰", color:"#10b981", lancTipo:"entrada"},
+  despesa_fixa:   {label:"Despesa Fixa",     icon:"📌", color:"#ef4444", lancTipo:"saida"},
+  prevista:       {label:"Despesa Prevista", icon:"◷",  color:"#a855f7", lancTipo:"saida"},
+  parcela_cartao: {label:"Parcela Cartão",   icon:"💳", color:"#f97316", lancTipo:"cartao"},
+};
+
+// Gera os pré-lançamentos (pendentes) do mês a partir do Cadastro Base.
+// - receita_fixa / despesa_fixa: pendente todo mês enquanto ativo (some ao confirmar via _baseId)
+// - prevista: pendente a partir do mês de início; baixa automática conforme gastos confirmados da categoria
+// - parcela_cartao: pendente nos meses corretos até a última parcela
+function getMonthView(baseItems, lancs, mes, ano, gastosPorCat){
+  const jaConfirmado=(biId)=>lancs.some(l=>l._baseId===biId&&l.status==="confirmado"&&(
+    l.tipo==="cartao" ? (l.mesFatura===mes&&l.anoFatura===ano) : (l.mes===mes&&l.ano===ano)
+  ));
+  const pend=[];
+  baseItems.forEach(bi=>{
+    if(bi.ativo===false) return;
+    if(bi.tipo==="receita_fixa"||bi.tipo==="despesa_fixa"){
+      if(jaConfirmado(bi.id)) return;
+      pend.push({_baseId:bi.id, baseTipo:bi.tipo, desc:bi.desc, valorPrevisto:+bi.valorPrevisto||0, catId:bi.catId, membro:bi.membro});
+    } else if(bi.tipo==="prevista"){
+      if(cmpMonth(mes,ano,bi.mesInicio||0,bi.anoInicio||ano)<0) return;
+      const gasto=bi.catId?(gastosPorCat[bi.catId]||0):0;
+      const restante=Math.max(0,(+bi.valorPrevisto||0)-gasto);
+      if(restante<=0) return; // coberta — baixa automática
+      pend.push({_baseId:bi.id, baseTipo:"prevista", desc:bi.desc, valorPrevisto:restante, valorOriginal:+bi.valorPrevisto||0, gasto, catId:bi.catId, membro:bi.membro});
+    } else if(bi.tipo==="parcela_cartao"){
+      const offset=cmpMonth(mes,ano,bi.mesFatura??mes,bi.anoFatura??ano);
+      const num=(+bi.parcelaAtual||1)+offset;
+      if(offset<0||num>(+bi.parcelas||1)) return;
+      if(jaConfirmado(bi.id)) return;
+      pend.push({_baseId:bi.id, baseTipo:"parcela_cartao", desc:`${bi.desc} (${num}/${bi.parcelas})`, valorPrevisto:+bi.valorPrevisto||0, catId:bi.catId, membro:bi.membro, cartao:bi.cartao, parcelaNum:num});
+    }
+  });
+  return pend;
+}
+
 // ─── Estilos base ─────────────────────────────────────────────────────────────
 const PURPLE = "#6c63ff";
 const S = {
@@ -344,8 +383,20 @@ function MainApp({familyCode,user,onLogout}){
   };
   const saveBase=async(data)=>{
     const {id,...rest}=data;
-    await setDoc(doc(db,fp("baseItems"),id||String(Date.now())),{...rest,ativo:rest.ativo!==false});
+    await setDoc(doc(db,fp("baseItems"),id||String(Date.now())),{...rest,valorPrevisto:+rest.valorPrevisto||0,ativo:rest.ativo!==false});
     toast2(id?"Atualizado!":"Cadastrado!"); setModal(null);
+  };
+  const deleteBase=async(id)=>{await deleteDoc(doc(db,fp("baseItems"),String(id)));toast2("Removido.");};
+  const confirmarPendente=async(p,valorReal)=>{
+    const tm=BASE_TIPOS[p.baseTipo]||BASE_TIPOS.despesa_fixa;
+    const entry={
+      tipo:tm.lancTipo, desc:p.desc, valor:+valorReal||0, catId:p.catId||"",
+      membro:p.membro||MEMBROS[0], status:"confirmado", _baseId:p._baseId,
+      mes:viewMes, ano:viewAno, data:todayStr(), updatedAt:Date.now(),
+    };
+    if(tm.lancTipo==="cartao"){ entry.cartao=p.cartao||CARTOES_LISTA[0]; entry.mesFatura=viewMes; entry.anoFatura=viewAno; entry.parcelas=1; }
+    await setDoc(doc(db,fp("lancamentos"),String(Date.now())),entry);
+    toast2("Confirmado!"); setModal(null);
   };
   const saveContaSaldo=async(contaId,saldo)=>{
     const valor=Number(saldo);
@@ -388,12 +439,9 @@ function MainApp({familyCode,user,onLogout}){
     }
   });
 
-  // Previstas pendentes (abate automático)
-  const previstasPendentes=baseItems.filter(bi=>bi.ativo!==false&&bi.tipo==="prevista"&&cmpMonth(viewMes,viewAno,bi.mesInicio||0,bi.anoInicio||HOJE.getFullYear())>=0).map(bi=>{
-    const gasto=bi.catId?(gastosPorCat[bi.catId]||0):0;
-    const restante=Math.max(0,(+bi.valorPrevisto||0)-gasto);
-    return {...bi,restante,coberta:restante<=0};
-  }).filter(p=>!p.coberta);
+  // Pré-lançamentos do mês (Cadastro Base)
+  const pendentes=getMonthView(baseItems,lancs,viewMes,viewAno,gastosPorCat);
+  const previstasPendentes=pendentes.filter(p=>p.baseTipo==="prevista").map(p=>({id:p._baseId,desc:p.desc,valorPrevisto:p.valorOriginal,restante:p.valorPrevisto}));
 
   const totalEntradas=confirmados.filter(l=>l.tipo==="entrada").reduce((s,l)=>s+(+l.valor||0),0);
   const totalSaidas=confirmados.filter(l=>l.tipo==="saida").reduce((s,l)=>s+(+l.valor||0),0);
@@ -426,6 +474,7 @@ function MainApp({familyCode,user,onLogout}){
       {/* Modais */}
       {modal?.tipo==="lancamento"&&<LancForm data={modal.data} onSave={saveLanc} onClose={()=>setModal(null)} allCats={allCats} viewMes={viewMes} viewAno={viewAno} onImportNFe={importNFe}/>}
       {modal?.tipo==="base"&&<BaseForm data={modal.data} onSave={saveBase} onClose={()=>setModal(null)} allCats={allCats}/>}
+      {modal?.tipo==="confirmarPendente"&&<ConfirmPendenteModal pendente={modal.data} onConfirm={v=>confirmarPendente(modal.data,v)} onClose={()=>setModal(null)}/>}
       {modal?.tipo==="transferencia"&&<TransfForm data={modal.data} onSave={saveTransferencia} onClose={()=>setModal(null)} contas={contas} viewMes={viewMes} viewAno={viewAno}/>}
       {modal?.tipo==="investimento"&&<InvestForm data={modal.data} onSave={saveInvest} onClose={()=>setModal(null)}/>}
       {modal?.tipo==="relatorioIR"&&<RelatorioIR lancs={lancs} onClose={()=>setModal(null)}/>}
@@ -441,7 +490,7 @@ function MainApp({familyCode,user,onLogout}){
                 <div style={{color:"rgba(255,255,255,0.75)",fontSize:13,fontWeight:500}}>Olá,</div>
                 <div style={{color:"#fff",fontSize:20,fontWeight:900}}>{user?.email?.split("@")[0]} 👋</div>
               </div>
-              <button onClick={onLogout} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:50,width:38,height:38,cursor:"pointer",color:"#fff",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>⎋</button>
+              <button onClick={()=>setTab("config")} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:50,width:38,height:38,cursor:"pointer",color:"#fff",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>⚙️</button>
             </div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:16,marginBottom:16,position:"relative",zIndex:1}}>
               <button onClick={()=>{const r=addM(viewMes,viewAno,-1);setViewMes(r.mes);setViewAno(r.ano);}} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",width:32,height:32,borderRadius:"50%",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
@@ -575,7 +624,7 @@ function MainApp({familyCode,user,onLogout}){
 
       {/* GASTOS */}
       {tab==="gastos"&&(
-        <TabGastos lancs={lancs} lancsDoMes={lancsDoMes} viewMes={viewMes} viewAno={viewAno} setViewMes={setViewMes} setViewAno={setViewAno} customCats={customCats} allCats={allCats} onEdit={l=>setModal({tipo:"lancamento",data:l})} onDelete={deleteLanc} previstasPendentes={previstasPendentes}/>
+        <TabGastos lancs={lancs} lancsDoMes={lancsDoMes} viewMes={viewMes} viewAno={viewAno} setViewMes={setViewMes} setViewAno={setViewAno} customCats={customCats} allCats={allCats} onEdit={l=>setModal({tipo:"lancamento",data:l})} onDelete={deleteLanc} previstasPendentes={previstasPendentes} pendentes={pendentes} onConfirmar={p=>setModal({tipo:"confirmarPendente",data:p})}/>
       )}
 
       {/* CARTÕES */}
@@ -593,6 +642,11 @@ function MainApp({familyCode,user,onLogout}){
         <TabInvestimentos investimentos={investimentos} totalInvestido={totalInvestido} onNovo={()=>setModal({tipo:"investimento",data:{}})} onEdit={i=>setModal({tipo:"investimento",data:i})} onDelete={deleteInvest} onRelatorioIR={()=>setModal({tipo:"relatorioIR",data:{}})}/>
       )}
 
+      {/* CONFIGURAÇÕES */}
+      {tab==="config"&&(
+        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout}/>
+      )}
+
       {/* FAB */}
       {["inicio","gastos","cartoes"].includes(tab)&&(
         <button onClick={()=>setModal({tipo:"lancamento",data:{mes:viewMes,ano:viewAno,tipo:tab==="cartoes"?"cartao":"saida"}})} style={{position:"fixed",bottom:72,right:"calc(50% - 224px)",width:52,height:52,background:`linear-gradient(135deg,${PURPLE},#a78bfa)`,border:"none",borderRadius:18,cursor:"pointer",fontSize:26,color:"#fff",boxShadow:"0 8px 24px rgba(108,99,255,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}}>+</button>
@@ -606,8 +660,9 @@ function MainApp({familyCode,user,onLogout}){
           {key:"cartoes",icon:"💳",label:"Cartões"},
           {key:"contas",icon:"🏦",label:"Contas"},
           {key:"investimentos",icon:"📈",label:"Invest."},
+          {key:"config",icon:"⚙️",label:"Ajustes"},
         ].map(({key,icon,label})=>(
-          <button key={key} onClick={()=>setTab(key)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:"none",border:"none",cursor:"pointer",padding:"0 12px"}}>
+          <button key={key} onClick={()=>setTab(key)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:"none",border:"none",cursor:"pointer",padding:"0 6px"}}>
             <span style={{fontSize:20}}>{icon}</span>
             <span style={{fontSize:10,fontWeight:700,color:tab===key?PURPLE:"#9ca3af"}}>{label}</span>
             {tab===key&&<span style={{width:4,height:4,background:PURPLE,borderRadius:"50%"}}/>}
@@ -619,7 +674,7 @@ function MainApp({familyCode,user,onLogout}){
 }
 
 // ─── Tab Gastos ───────────────────────────────────────────────────────────────
-function TabGastos({lancs,lancsDoMes,viewMes,viewAno,setViewMes,setViewAno,customCats,allCats,onEdit,onDelete,previstasPendentes}){
+function TabGastos({lancs,lancsDoMes,viewMes,viewAno,setViewMes,setViewAno,customCats,allCats,onEdit,onDelete,previstasPendentes,pendentes=[],onConfirmar}){
   const [filtro,setFiltro]=useState("todos"); // todos | entradas | saidas | previstas
   const confirmados=lancsDoMes.filter(l=>l.status==="confirmado");
   const view=filtro==="entradas"?confirmados.filter(l=>l.tipo==="entrada"):filtro==="saidas"?confirmados.filter(l=>l.tipo==="saida"||l.tipo==="cartao"):filtro==="previstas"?[]:confirmados;
@@ -644,6 +699,34 @@ function TabGastos({lancs,lancsDoMes,viewMes,viewAno,setViewMes,setViewAno,custo
             </button>
           ))}
         </div>
+
+        {/* Pendentes do Cadastro Base */}
+        {filtro==="todos"&&pendentes.length>0&&(
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:14,fontWeight:700,color:"#374151",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              ⏳ Pendentes
+              <span style={{background:"#fef3c7",color:"#b45309",fontSize:11,fontWeight:700,borderRadius:20,padding:"2px 8px"}}>{pendentes.length}</span>
+            </div>
+            {pendentes.map(p=>{
+              const tm=BASE_TIPOS[p.baseTipo]||{};
+              const isEntrada=tm.lancTipo==="entrada";
+              return(
+                <div key={p._baseId} style={{background:"#fff",border:`1.5px dashed ${tm.color}55`,borderRadius:14,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:38,height:38,borderRadius:12,background:tm.color+"18",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{tm.icon}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.desc}</div>
+                    <div style={{fontSize:10,color:"#9ca3af",marginTop:2}}>
+                      {tm.label}{p.cartao?` · ${p.cartao}`:""}{p.membro?` · ${p.membro}`:""}
+                      {p.baseTipo==="prevista"&&p.gasto>0&&<span> · gasto {fmt(p.gasto)} de {fmt(p.valorOriginal)}</span>}
+                    </div>
+                  </div>
+                  <div style={{fontSize:13,fontWeight:900,color:isEntrada?"#10b981":tm.color,flexShrink:0}}>{isEntrada?"+":"-"}{fmt(p.valorPrevisto)}</div>
+                  <button onClick={()=>onConfirmar&&onConfirmar(p)} style={{background:"#d1fae5",border:"none",borderRadius:10,color:"#059669",padding:"8px 10px",cursor:"pointer",fontSize:11,fontWeight:800,flexShrink:0}}>✓ Confirmar</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Previstas */}
         {filtro==="previstas"&&(
@@ -1173,33 +1256,151 @@ function LancForm({data,onSave,onClose,allCats,viewMes,viewAno,onImportNFe}){
 }
 
 function BaseForm({data,onSave,onClose,allCats}){
-  const [f,setF]=useState({tipo:"prevista",desc:"",valorPrevisto:"",catId:"",membro:MEMBROS[0],mesInicio:HOJE.getMonth(),anoInicio:HOJE.getFullYear(),ativo:true,...data});
+  const [f,setF]=useState({tipo:"prevista",desc:"",valorPrevisto:"",catId:"",membro:MEMBROS[0],mesInicio:HOJE.getMonth(),anoInicio:HOJE.getFullYear(),cartao:CARTOES_LISTA[0],parcelas:1,parcelaAtual:1,mesFatura:HOJE.getMonth(),anoFatura:HOJE.getFullYear(),ativo:true,...data});
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
+  const tm=BASE_TIPOS[f.tipo]||BASE_TIPOS.prevista;
+  const isParcela=f.tipo==="parcela_cartao";
+  const cats=f.tipo==="receita_fixa"?CATS_RECEITA:[...CATS_DESPESA,...allCats.filter(c=>c.custom)];
   return(
-    <Modal title={f.id?"Editar Base":"Nova Despesa Prevista"} onClose={onClose}>
-      <Field label="Descrição"><input value={f.desc} onChange={e=>set("desc",e.target.value)} placeholder="Ex: Conta de luz, Medicamentos..." style={S.inp}/></Field>
+    <Modal title={`${f.id?"Editar":"Novo"}: ${tm.icon} ${tm.label}`} onClose={onClose}>
+      {!f.id&&(
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+          {Object.entries(BASE_TIPOS).map(([k,t])=>(
+            <button key={k} type="button" onClick={()=>set("tipo",k)} style={{padding:"7px 12px",borderRadius:20,border:`1.5px solid ${f.tipo===k?t.color:"#e0e0f0"}`,background:f.tipo===k?t.color+"15":"#fff",color:f.tipo===k?t.color:"#6b7280",fontWeight:700,fontSize:11,cursor:"pointer"}}>
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <Field label="Descrição"><input value={f.desc} onChange={e=>set("desc",e.target.value)} placeholder={f.tipo==="receita_fixa"?"Ex: Salário, Aluguel recebido...":f.tipo==="despesa_fixa"?"Ex: Escola, Plano de saúde...":isParcela?"Ex: Geladeira, Notebook...":"Ex: Conta de luz, Medicamentos..."} style={S.inp}/></Field>
       <div style={{display:"flex",gap:10}}>
-        <Field label="Valor previsto (R$)" half><input value={f.valorPrevisto} onChange={e=>set("valorPrevisto",e.target.value)} type="number" placeholder="0,00" style={S.inp}/></Field>
+        <Field label={isParcela?"Valor da parcela (R$)":"Valor previsto (R$)"} half><input value={f.valorPrevisto} onChange={e=>set("valorPrevisto",e.target.value)} type="number" placeholder="0,00" style={S.inp}/></Field>
         <Field label="Membro" half><select value={f.membro} onChange={e=>set("membro",e.target.value)} style={S.inp}>{MEMBROS.map(m=><option key={m}>{m}</option>)}</select></Field>
       </div>
       <Field label="Categoria">
         <select value={f.catId} onChange={e=>set("catId",e.target.value)} style={S.inp}>
           <option value="">— Categoria —</option>
-          {CATS_DESPESA.map(c=><option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+          {cats.map(c=><option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
         </select>
       </Field>
-      <div style={{display:"flex",gap:10}}>
-        <Field label="Mês início" half><select value={f.mesInicio} onChange={e=>set("mesInicio",+e.target.value)} style={S.inp}>{MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}</select></Field>
-        <Field label="Ano início" half><input value={f.anoInicio} onChange={e=>set("anoInicio",+e.target.value)} type="number" style={S.inp}/></Field>
-      </div>
-      <div style={{background:"#f0f9ff",border:"1.5px solid #bae6fd",borderRadius:12,padding:"10px 12px",marginBottom:12,fontSize:12,color:"#0c4a6e"}}>
-        ◷ Aparece todo mês a partir de {MESES[f.mesInicio]}/{f.anoInicio}. A baixa é automática quando lançar na mesma categoria.
-      </div>
-      {f.id&&<label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:"#6b7280",marginBottom:12}}><input type="checkbox" checked={f.ativo!==false} onChange={e=>set("ativo",e.target.checked)} style={{width:15,height:15,accentColor:PURPLE}}/>Item ativo</label>}
+      {f.tipo==="prevista"&&(
+        <>
+          <div style={{display:"flex",gap:10}}>
+            <Field label="Mês início" half><select value={f.mesInicio} onChange={e=>set("mesInicio",+e.target.value)} style={S.inp}>{MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}</select></Field>
+            <Field label="Ano início" half><input value={f.anoInicio} onChange={e=>set("anoInicio",+e.target.value)} type="number" style={S.inp}/></Field>
+          </div>
+          <div style={{background:"#faf5ff",border:"1.5px solid #ede9fe",borderRadius:12,padding:"10px 12px",marginBottom:12,fontSize:12,color:"#6b21a8"}}>
+            ◷ Aparece todo mês a partir de {MESES[f.mesInicio]}/{f.anoInicio}. Baixa automática conforme os gastos confirmados da categoria atingem o valor previsto.
+          </div>
+        </>
+      )}
+      {isParcela&&(
+        <>
+          <div style={{display:"flex",gap:10}}>
+            <Field label="Cartão" half><select value={f.cartao} onChange={e=>set("cartao",e.target.value)} style={S.inp}>{CARTOES_LISTA.map(c=><option key={c}>{c}</option>)}</select></Field>
+            <Field label="Total de parcelas" half><input value={f.parcelas} onChange={e=>set("parcelas",Math.max(1,+e.target.value||1))} type="number" min="1" max="60" style={S.inp}/></Field>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Field label="Parcela atual" half><input value={f.parcelaAtual} onChange={e=>set("parcelaAtual",Math.max(1,+e.target.value||1))} type="number" min="1" style={S.inp}/></Field>
+            <Field label="Mês da fatura atual" half><select value={f.mesFatura} onChange={e=>set("mesFatura",+e.target.value)} style={S.inp}>{MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}</select></Field>
+          </div>
+          <Field label="Ano da fatura"><input value={f.anoFatura} onChange={e=>set("anoFatura",+e.target.value)} type="number" style={S.inp}/></Field>
+          <div style={{background:"#fff7ed",border:"1.5px solid #fed7aa",borderRadius:12,padding:"10px 12px",marginBottom:12,fontSize:12,color:"#9a3412"}}>
+            💳 Parcela {f.parcelaAtual}/{f.parcelas} na fatura de {MESES[f.mesFatura]}/{f.anoFatura}. Gera pendente todo mês até a última parcela.
+          </div>
+        </>
+      )}
+      {(f.tipo==="receita_fixa"||f.tipo==="despesa_fixa")&&(
+        <div style={{background:f.tipo==="receita_fixa"?"#d1fae5":"#fee2e2",border:`1.5px solid ${f.tipo==="receita_fixa"?"#a7f3d0":"#fecaca"}`,borderRadius:12,padding:"10px 12px",marginBottom:12,fontSize:12,color:f.tipo==="receita_fixa"?"#065f46":"#991b1b"}}>
+          {tm.icon} Gera um pendente todo mês enquanto estiver ativo. Confirme com o valor real quando {f.tipo==="receita_fixa"?"receber":"pagar"}.
+        </div>
+      )}
+      {f.id&&<label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:"#6b7280",marginBottom:12}}><input type="checkbox" checked={f.ativo!==false} onChange={e=>set("ativo",e.target.checked)} style={{width:15,height:15,accentColor:PURPLE}}/>Item ativo (desmarque para encerrar sem apagar)</label>}
       <button onClick={()=>onSave(f)} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",padding:"13px 0",fontSize:14}}>
         {f.id?"Salvar":"Cadastrar"}
       </button>
     </Modal>
+  );
+}
+
+// ─── Modal de confirmação de pendente ────────────────────────────────────────
+function ConfirmPendenteModal({pendente,onConfirm,onClose}){
+  const [valor,setValor]=useState(String(pendente.valorPrevisto||""));
+  const tm=BASE_TIPOS[pendente.baseTipo]||{};
+  return(
+    <Modal title="✓ Confirmar lançamento" onClose={onClose} maxW={420}>
+      <div style={{background:"#f8f9ff",border:"1.5px solid #e0e0f0",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
+        <div style={{fontSize:13,fontWeight:800,color:"#1f2937"}}>{pendente.desc}</div>
+        <div style={{fontSize:11,color:"#9ca3af",marginTop:3}}>{tm.icon} {tm.label}{pendente.cartao?` · ${pendente.cartao}`:""} · previsto {fmt(pendente.valorPrevisto)}</div>
+      </div>
+      <Field label="Valor real (R$)"><input value={valor} onChange={e=>setValor(e.target.value)} type="number" autoFocus style={S.inp} onKeyDown={e=>e.key==="Enter"&&+valor>0&&onConfirm(+valor)}/></Field>
+      <button onClick={()=>onConfirm(+valor||0)} disabled={!(+valor>0)} style={{...S.btn("linear-gradient(135deg,#059669,#34d399)"),width:"100%",padding:"13px 0",fontSize:14,opacity:+valor>0?1:.5}}>
+        ✓ Confirmar {tm.lancTipo==="entrada"?"recebimento":"pagamento"}
+      </button>
+    </Modal>
+  );
+}
+
+// ─── Tab Configurações ────────────────────────────────────────────────────────
+function TabConfig({baseItems,customCats,user,familyCode,onAdd,onEdit,onDelete,onLogout}){
+  return(
+    <div>
+      <div style={{background:"linear-gradient(135deg,#475569,#94a3b8)",padding:"20px 20px 28px",borderRadius:"0 0 28px 28px"}}>
+        <div style={{textAlign:"center"}}>
+          <div style={{color:"rgba(255,255,255,0.7)",fontSize:11,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600}}>Configurações</div>
+          <div style={{color:"#fff",fontSize:24,fontWeight:900,margin:"4px 0"}}>⚙️ Ajustes</div>
+          <div style={{color:"rgba(255,255,255,0.6)",fontSize:12}}>{user?.email} · família <strong>{familyCode}</strong></div>
+        </div>
+      </div>
+      <div style={{padding:"16px 16px 0"}}>
+        {/* Cadastro Base */}
+        <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:4}}>📦 Cadastro Base</div>
+        <div style={{fontSize:11,color:"#9ca3af",marginBottom:14}}>Itens recorrentes que geram pendentes automáticos todo mês.</div>
+        {Object.entries(BASE_TIPOS).map(([tipo,tm])=>{
+          const items=baseItems.filter(b=>b.tipo===tipo);
+          return(
+            <div key={tipo} style={{marginBottom:18}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{fontSize:13,fontWeight:700,color:tm.color}}>{tm.icon} {tm.label} {items.length>0&&<span style={{color:"#9ca3af",fontWeight:600}}>({items.length})</span>}</div>
+                <button onClick={()=>onAdd(tipo)} style={{background:tm.color+"15",border:`1.5px solid ${tm.color}40`,borderRadius:10,color:tm.color,padding:"5px 12px",cursor:"pointer",fontSize:11,fontWeight:800}}>+ Adicionar</button>
+              </div>
+              {items.length===0
+                ? <div style={{fontSize:12,color:"#c4c8d4",padding:"8px 0 0 4px"}}>Nenhum item cadastrado.</div>
+                : items.map(b=>{
+                  const c=getCat(b.catId,customCats);
+                  const inativo=b.ativo===false;
+                  return(
+                    <div key={b.id} style={{background:"#fff",borderRadius:12,padding:"10px 12px",marginBottom:6,boxShadow:"0 2px 6px rgba(0,0,0,0.04)",display:"flex",alignItems:"center",gap:10,opacity:inativo?.55:1}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:700,color:"#1f2937",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                          {b.desc}{tipo==="parcela_cartao"&&` (${b.parcelaAtual||1}/${b.parcelas||1})`}
+                          {inativo&&<span style={{marginLeft:6,background:"#f3f4f6",color:"#9ca3af",fontSize:9,fontWeight:800,borderRadius:6,padding:"1px 6px",verticalAlign:"middle"}}>ENCERRADO</span>}
+                        </div>
+                        <div style={{fontSize:10,color:"#9ca3af",marginTop:2}}>
+                          {b.catId&&`${c.icon} ${c.label} · `}{b.membro||""}{tipo==="parcela_cartao"&&b.cartao?` · ${b.cartao}`:""}{tipo==="prevista"?` · desde ${MESES[b.mesInicio||0]}/${b.anoInicio||""}`:""}
+                        </div>
+                      </div>
+                      <div style={{fontSize:12,fontWeight:900,color:tm.color,flexShrink:0}}>{fmt(b.valorPrevisto)}</div>
+                      <div style={{display:"flex",gap:4,flexShrink:0}}>
+                        <button onClick={()=>onEdit(b)} style={{background:"#f3f4f6",border:"none",borderRadius:8,color:"#6b7280",padding:"5px 7px",cursor:"pointer",fontSize:11}}>✏</button>
+                        <button onClick={()=>onDelete(b.id)} style={{background:"#fef2f2",border:"none",borderRadius:8,color:"#ef4444",padding:"5px 7px",cursor:"pointer",fontSize:11}}>✕</button>
+                      </div>
+                    </div>
+                  );
+                })
+              }
+            </div>
+          );
+        })}
+        {/* Sair */}
+        <div style={{borderTop:"1.5px solid #e5e7eb",marginTop:8,paddingTop:16,marginBottom:20}}>
+          <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:10}}>🚪 Sair</div>
+          <button onClick={onLogout} style={{...S.btn("#fef2f2","#ef4444"),width:"100%",padding:"13px 0",fontSize:13,border:"1.5px solid #fecaca"}}>
+            ⎋ Sair da conta
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
