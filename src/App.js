@@ -1525,13 +1525,16 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno})
     <Modal title={`📸 Importar ${isCartao?"fatura do cartão":"extrato da conta"}`} onClose={onClose} maxW={520}>
       {!resultado?(
         <>
-          <label style={{display:"block",border:"2px dashed #c7d2fe",borderRadius:16,padding:preview?8:"32px 16px",textAlign:"center",cursor:"pointer",background:"#f8f9ff",marginBottom:14}}>
+          <div style={{border:"2px dashed #c7d2fe",borderRadius:16,padding:preview?12:"28px 16px",textAlign:"center",background:"#f8f9ff",marginBottom:14}}>
             {preview
-              ? <img src={preview} alt="prévia" style={{maxWidth:"100%",maxHeight:280,borderRadius:10,display:"block",margin:"0 auto"}}/>
-              : <><div style={{fontSize:30,marginBottom:8}}>📸</div><div style={{fontSize:13,color:"#6b7280",fontWeight:700}}>Toque para tirar foto ou escolher imagem</div><div style={{fontSize:11,color:"#9ca3af",marginTop:4}}>Print ou foto da {isCartao?"fatura do cartão":"tela do extrato"}</div></>
+              ? <img src={preview} alt="prévia" style={{maxWidth:"100%",maxHeight:280,borderRadius:10,display:"block",margin:"0 auto 12px"}}/>
+              : <><div style={{fontSize:30,marginBottom:8}}>📸</div><div style={{fontSize:12,color:"#9ca3af",marginBottom:12}}>Print ou foto da {isCartao?"fatura do cartão":"tela do extrato"}</div></>
             }
-            <input type="file" accept="image/*" capture="environment" onChange={escolher} style={{display:"none"}}/>
-          </label>
+            <input type="file" id="importar-extrato-input" accept="image/*" onChange={escolher} style={{display:"none"}}/>
+            <label htmlFor="importar-extrato-input" style={{...S.btn(grad),display:"inline-block",padding:"11px 22px",fontSize:13,cursor:"pointer"}}>
+              📸 {preview?"Trocar imagem":"Selecionar print ou foto"}
+            </label>
+          </div>
           {erro&&<div style={{background:"#fef2f2",border:"1.5px solid #fecaca",color:"#b91c1c",borderRadius:12,padding:"10px 12px",fontSize:12,marginBottom:12}}>{erro}</div>}
           <button onClick={extrair} disabled={!file||loading} style={{...S.btn(grad),width:"100%",padding:"13px 0",fontSize:14,opacity:(!file||loading)?.5:1}}>
             {loading?"Analisando imagem…":"🤖 Extrair transações"}
