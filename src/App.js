@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, auth } from "./firebase";
-import { collection, doc, onSnapshot, setDoc, deleteDoc, getDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, getDocs } from "firebase/firestore";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { Html5Qrcode } from "html5-qrcode";
 
@@ -444,6 +444,15 @@ function MainApp({familyCode,user,onLogout}){
   };
   const deleteMembro=async(id)=>{await deleteDoc(doc(db,fp("membros"),String(id)));toast2("Membro removido.");};
   const saveConfigFin=async(patch)=>{ await setDoc(doc(db,`familias/${familyCode}`),patch,{merge:true}); toast2("Configurações salvas!"); };
+  const resetarDados=async()=>{
+    // Firestore client SDK não tem delete de coleção: getDocs + deleteDoc em loop.
+    for(const c of ["lancamentos","baseItems","investimentos","analises"]){
+      const snap=await getDocs(collection(db,fp(c)));
+      await Promise.all(snap.docs.map(d=>deleteDoc(d.ref)));
+    }
+    setModal(null); setTab("inicio");
+    toast2("Dados resetados com sucesso");
+  };
   const confirmarPendente=async(p,valorReal)=>{
     const tm=BASE_TIPOS[p.baseTipo]||BASE_TIPOS.despesa_fixa;
     const entry={
@@ -580,6 +589,7 @@ function MainApp({familyCode,user,onLogout}){
       {modal?.tipo==="investimento"&&<InvestForm data={modal.data} onSave={saveInvest} onClose={()=>setModal(null)}/>}
       {modal?.tipo==="relatorioIR"&&<RelatorioIR lancs={lancs} onClose={()=>setModal(null)}/>}
       {consultorOpen&&<ConsultorFinanceiro analises={analises} atualId={`${viewMes}-${viewAno}`} mesLabel={`${MESES[viewMes]} ${viewAno}`} loading={consultorLoading} erro={consultorErro} onGerar={()=>gerarAnalise(viewMes,viewAno)} onClose={()=>setConsultorOpen(false)}/>}
+      {modal?.tipo==="reset"&&<ResetModal onConfirm={resetarDados} onClose={()=>setModal(null)}/>}
 
       {/* INÍCIO */}
       {tab==="inicio"&&(
@@ -757,7 +767,7 @@ function MainApp({familyCode,user,onLogout}){
 
       {/* CONFIGURAÇÕES */}
       {tab==="config"&&(
-        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} membros={membros} onAddMembro={saveMembro} onDelMembro={deleteMembro} config={config} onSaveConfig={saveConfigFin} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout}/>
+        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} membros={membros} onAddMembro={saveMembro} onDelMembro={deleteMembro} config={config} onSaveConfig={saveConfigFin} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout} onReset={()=>setModal({tipo:"reset"})}/>
       )}
 
       {/* FAB */}
@@ -1454,6 +1464,31 @@ function ConfirmPendenteModal({pendente,onConfirm,onClose}){
   );
 }
 
+// ─── Modal Resetar Dados ──────────────────────────────────────────────────────
+function ResetModal({onConfirm,onClose}){
+  const [txt,setTxt]=useState("");
+  const [loading,setLoading]=useState(false);
+  const ok=txt.trim()==="RESETAR";
+  const confirmar=async()=>{ if(!ok||loading) return; setLoading(true); try{ await onConfirm(); }catch(e){ setLoading(false); } };
+  return(
+    <Modal title="⚠️ Resetar todos os dados" onClose={onClose} maxW={420}>
+      <div style={{background:"#fef2f2",border:"1.5px solid #fecaca",borderRadius:12,padding:"14px 16px",marginBottom:16,fontSize:13,color:"#991b1b",lineHeight:1.6}}>
+        <strong>Tem certeza?</strong> Esta ação apaga <strong>TODOS</strong> os lançamentos, cadastro base e investimentos.<br/>
+        Membros e configurações serão mantidos.
+      </div>
+      <Field label='Digite RESETAR para confirmar'>
+        <input value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&confirmar()} placeholder="RESETAR" autoFocus style={S.inp}/>
+      </Field>
+      <div style={{display:"flex",gap:8,marginTop:6}}>
+        <button onClick={onClose} disabled={loading} style={{...S.btn("#f3f4f6","#374151"),flex:1,padding:"12px 0"}}>Cancelar</button>
+        <button onClick={confirmar} disabled={!ok||loading} style={{...S.btn("linear-gradient(135deg,#dc2626,#ef4444)"),flex:2,padding:"12px 0",opacity:ok&&!loading?1:.5,cursor:ok&&!loading?"pointer":"not-allowed"}}>
+          {loading?"Apagando…":"🗑️ Resetar tudo"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Consultor Financeiro IA ─────────────────────────────────────────────────
 function ConsultorFinanceiro({analises,atualId,mesLabel,loading,erro,onGerar,onClose}){
   const sorted=[...analises].sort((x,y)=>(y.data||0)-(x.data||0));
@@ -1610,7 +1645,7 @@ function ConfigFinanceira({config,onSave}){
 }
 
 // ─── Tab Configurações ────────────────────────────────────────────────────────
-function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,onDelMembro,config={},onSaveConfig,onAdd,onEdit,onDelete,onLogout}){
+function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,onDelMembro,config={},onSaveConfig,onAdd,onEdit,onDelete,onLogout,onReset}){
   const [novoMembro,setNovoMembro]=useState("");
   const addM2=()=>{ const n=novoMembro.trim(); if(!n) return; onAddMembro&&onAddMembro(n); setNovoMembro(""); };
   return(
@@ -1687,6 +1722,15 @@ function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,
           <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:10}}>🚪 Sair</div>
           <button onClick={onLogout} style={{...S.btn("#fef2f2","#ef4444"),width:"100%",padding:"13px 0",fontSize:13,border:"1.5px solid #fecaca"}}>
             ⎋ Sair da conta
+          </button>
+        </div>
+
+        {/* Zona de Perigo */}
+        <div style={{borderTop:"1.5px solid #fecaca",paddingTop:16,marginBottom:32}}>
+          <div style={{fontSize:14,fontWeight:800,color:"#b91c1c",marginBottom:6}}>⚠️ Zona de Perigo</div>
+          <div style={{fontSize:11,color:"#9ca3af",marginBottom:12}}>Apaga lançamentos, cadastro base, investimentos e análises. Membros, contas, categorias e configurações são mantidos.</div>
+          <button onClick={onReset} style={{...S.btn("#fef2f2","#dc2626"),width:"100%",padding:"13px 0",fontSize:13,border:"1.5px solid #fca5a5",fontWeight:800}}>
+            🗑️ Resetar todos os dados
           </button>
         </div>
       </div>
