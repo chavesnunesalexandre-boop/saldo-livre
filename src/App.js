@@ -429,6 +429,11 @@ function MainApp({familyCode,user,onLogout}){
     })));
     toast2(`${items.length} lançamento(s) importado(s)!`); setModal(null);
   };
+  const importarLancamentos=async(arr)=>{
+    const base=Date.now();
+    await Promise.all(arr.map((l,i)=>setDoc(doc(db,fp("lancamentos"),String(base+i)),{...l,updatedAt:base+i})));
+    toast2(`${arr.length} lançamento(s) importado(s)!`); setModal(null);
+  };
   const saveBase=async(data)=>{
     const {id,...rest}=data;
     await setDoc(doc(db,fp("baseItems"),id||String(Date.now())),{...rest,valorPrevisto:+rest.valorPrevisto||0,ativo:rest.ativo!==false});
@@ -590,6 +595,7 @@ function MainApp({familyCode,user,onLogout}){
       {modal?.tipo==="relatorioIR"&&<RelatorioIR lancs={lancs} onClose={()=>setModal(null)}/>}
       {consultorOpen&&<ConsultorFinanceiro analises={analises} atualId={`${viewMes}-${viewAno}`} mesLabel={`${MESES[viewMes]} ${viewAno}`} loading={consultorLoading} erro={consultorErro} onGerar={()=>gerarAnalise(viewMes,viewAno)} onClose={()=>setConsultorOpen(false)}/>}
       {modal?.tipo==="reset"&&<ResetModal onConfirm={resetarDados} onClose={()=>setModal(null)}/>}
+      {modal?.tipo==="importarExtrato"&&<ImportarExtrato contexto={modal.data.contexto} membros={nomesMembros} onImport={importarLancamentos} onClose={()=>setModal(null)} viewMes={viewMes} viewAno={viewAno}/>}
 
       {/* INÍCIO */}
       {tab==="inicio"&&(
@@ -752,12 +758,12 @@ function MainApp({familyCode,user,onLogout}){
 
       {/* CARTÕES */}
       {tab==="cartoes"&&(
-        <TabCartoes lancs={lancs} viewMes={viewMes} viewAno={viewAno} setViewMes={setViewMes} setViewAno={setViewAno} customCats={customCats} allCats={allCats} onEdit={l=>setModal({tipo:"lancamento",data:{...l,tipo:"cartao"}})} onDelete={deleteLanc} onNovaCompra={()=>setModal({tipo:"lancamento",data:{tipo:"cartao",mes:viewMes,ano:viewAno}})}/>
+        <TabCartoes lancs={lancs} viewMes={viewMes} viewAno={viewAno} setViewMes={setViewMes} setViewAno={setViewAno} customCats={customCats} allCats={allCats} onEdit={l=>setModal({tipo:"lancamento",data:{...l,tipo:"cartao"}})} onDelete={deleteLanc} onNovaCompra={()=>setModal({tipo:"lancamento",data:{tipo:"cartao",mes:viewMes,ano:viewAno}})} onImportar={()=>setModal({tipo:"importarExtrato",data:{contexto:"cartao"}})}/>
       )}
 
       {/* CONTAS */}
       {tab==="contas"&&(
-        <TabContas contas={contas} lancs={lancs} viewMes={viewMes} viewAno={viewAno} setViewMes={setViewMes} setViewAno={setViewAno} onAjustarSaldo={saveContaSaldo} onTransferencia={()=>setModal({tipo:"transferencia",data:{}})} onPagarFatura={()=>setModal({tipo:"transferencia",data:{tipo:"fatura"}})} customCats={customCats}/>
+        <TabContas contas={contas} lancs={lancs} viewMes={viewMes} viewAno={viewAno} setViewMes={setViewMes} setViewAno={setViewAno} onAjustarSaldo={saveContaSaldo} onTransferencia={()=>setModal({tipo:"transferencia",data:{}})} onPagarFatura={()=>setModal({tipo:"transferencia",data:{tipo:"fatura"}})} onImportar={()=>setModal({tipo:"importarExtrato",data:{contexto:"conta"}})} customCats={customCats}/>
       )}
 
       {/* INVESTIMENTOS */}
@@ -905,7 +911,7 @@ function TabGastos({lancs,lancsDoMes,viewMes,viewAno,setViewMes,setViewAno,custo
 }
 
 // ─── Tab Cartões ──────────────────────────────────────────────────────────────
-function TabCartoes({lancs,viewMes,viewAno,setViewMes,setViewAno,customCats,allCats,onEdit,onDelete,onNovaCompra}){
+function TabCartoes({lancs,viewMes,viewAno,setViewMes,setViewAno,customCats,allCats,onEdit,onDelete,onNovaCompra,onImportar}){
   const [cartaoAtivo,setCartaoAtivo]=useState(CARTOES_LISTA[0]);
   const comprasMes=lancs.filter(l=>l.tipo==="cartao"&&l.mesFatura===viewMes&&l.anoFatura===viewAno);
   const comprasCartao=comprasMes.filter(l=>(l.cartao||"C6")===cartaoAtivo);
@@ -934,6 +940,7 @@ function TabCartoes({lancs,viewMes,viewAno,setViewMes,setViewAno,customCats,allC
           })}
           <button onClick={onNovaCompra} style={{padding:"8px 14px",borderRadius:12,border:"none",background:"#f97316",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",flexShrink:0,marginLeft:"auto"}}>+ Compra</button>
         </div>
+        <button onClick={onImportar} style={{width:"100%",background:"#fff7ed",border:"1.5px solid #fed7aa",borderRadius:12,padding:"11px 0",color:"#ea580c",fontWeight:800,fontSize:13,cursor:"pointer",marginBottom:14}}>📸 Importar fatura por foto</button>
 
         {comprasCartao.length===0
           ? <div style={{textAlign:"center",color:"#9ca3af",padding:"32px 0",fontSize:13}}>Nenhuma compra no {cartaoAtivo} em {MESES[viewMes]}</div>
@@ -962,7 +969,7 @@ function TabCartoes({lancs,viewMes,viewAno,setViewMes,setViewAno,customCats,allC
 }
 
 // ─── Tab Contas ───────────────────────────────────────────────────────────────
-function TabContas({contas,lancs,viewMes,viewAno,setViewMes,setViewAno,onAjustarSaldo,onTransferencia,onPagarFatura,customCats}){
+function TabContas({contas,lancs,viewMes,viewAno,setViewMes,setViewAno,onAjustarSaldo,onTransferencia,onPagarFatura,onImportar,customCats}){
   const [contaAtiva,setContaAtiva]=useState(null);
   const totalContas=CONTAS_LISTA.reduce((s,c)=>{const ct=contas.find(x=>x.id===c);return s+(ct?+ct.saldo||0:0);},0);
   const getSaldo=id=>{const c=contas.find(x=>x.id===id);return c?+c.saldo||0:0;};
@@ -982,6 +989,7 @@ function TabContas({contas,lancs,viewMes,viewAno,setViewMes,setViewAno,onAjustar
           <button onClick={onTransferencia} style={{background:"#ede9fe",border:"none",borderRadius:14,padding:"12px",color:PURPLE,fontWeight:700,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>⇄ Transferência</button>
           <button onClick={onPagarFatura} style={{background:"#fff7ed",border:"none",borderRadius:14,padding:"12px",color:"#f97316",fontWeight:700,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>💳 Pagar Fatura</button>
         </div>
+        <button onClick={onImportar} style={{width:"100%",background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:12,padding:"11px 0",color:"#2563eb",fontWeight:800,fontSize:13,cursor:"pointer",marginBottom:16}}>📸 Importar extrato por foto</button>
 
         {/* Cards de contas */}
         {CONTAS_LISTA.map(id=>{
@@ -1460,6 +1468,129 @@ function ConfirmPendenteModal({pendente,onConfirm,onClose}){
       <button onClick={()=>onConfirm(+valor||0)} disabled={!(+valor>0)} style={{...S.btn("linear-gradient(135deg,#059669,#34d399)"),width:"100%",padding:"13px 0",fontSize:14,opacity:+valor>0?1:.5}}>
         ✓ Confirmar {tm.lancTipo==="entrada"?"recebimento":"pagamento"}
       </button>
+    </Modal>
+  );
+}
+
+// ─── Importar Extrato por Foto ───────────────────────────────────────────────
+function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno}){
+  const isCartao=contexto==="cartao";
+  const grad=isCartao?"linear-gradient(135deg,#ea580c,#fb923c)":"linear-gradient(135deg,#2563eb,#60a5fa)";
+  const [file,setFile]=useState(null);
+  const [preview,setPreview]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [erro,setErro]=useState("");
+  const [resultado,setResultado]=useState(null);
+  const [itens,setItens]=useState([]);
+  const [cartao,setCartao]=useState(CARTOES_LISTA[0]);
+  const [contaId,setContaId]=useState(CONTAS_LISTA[0]);
+  const [mes,setMes]=useState(viewMes);
+  const [ano,setAno]=useState(viewAno);
+
+  const escolher=(e)=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; setFile(f); setPreview(URL.createObjectURL(f)); setResultado(null); setItens([]); setErro(""); };
+  const detectarCartao=(banco)=>{ const b=(banco||"").toLowerCase(); const f=CARTOES_LISTA.find(c=>b.includes(c.toLowerCase())); if(f) return f; if(b.includes("nu")) return "Nubank"; return CARTOES_LISTA[0]; };
+
+  const extrair=async()=>{
+    if(!file) return; setErro(""); setLoading(true);
+    try{
+      const {base64,mediaType}=await fileToResizedBase64(file,1600,0.75);
+      const r=await fetch("/api/importar-extrato",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({imagemBase64:base64,mediaType,contexto})});
+      const j=await r.json();
+      if(j.error) throw new Error(j.error);
+      const lista=(j.itens||[]).map((it,i)=>{ const inflow=it.tipo==="entrada"||it.tipo==="estorno"; return { _i:i, sel:it.tipo!=="estorno", data:it.data||"", desc:it.desc||"", valor:Math.abs(+it.valor||0), tipo:it.tipo||(isCartao?"compra":"saida"), parcela:it.parcela||null, titular:it.titular||null, catId:inflow?"":sugerirCategoria(it.desc), membro:membros[0]||"" }; });
+      setResultado(j); setItens(lista);
+      if(isCartao&&j.banco) setCartao(detectarCartao(j.banco));
+      if(!lista.length) setErro("Nenhuma transação reconhecida. Tente uma imagem mais nítida.");
+    }catch(e){ setErro("Falha ao extrair: "+e.message); }
+    setLoading(false);
+  };
+
+  const upd=(i,k,v)=>setItens(arr=>arr.map(it=>it._i===i?{...it,[k]:v}:it));
+  const selecionados=itens.filter(i=>i.sel);
+  const totalSel=selecionados.reduce((s,it)=>s+(it.tipo==="estorno"?-it.valor:+it.valor||0),0);
+
+  const importar=()=>{
+    const arr=selecionados.map(it=>{
+      if(isCartao){
+        const est=it.tipo==="estorno";
+        return { tipo:"cartao", desc:it.desc, valor:est?-Math.abs(+it.valor||0):Math.abs(+it.valor||0), catId:it.catId, membro:it.membro||membros[0]||"", cartao, mes:+mes, ano:+ano, mesFatura:+mes, anoFatura:+ano, parcelas:1, status:"confirmado", origem:"extrato", data:todayStr() };
+      }
+      const t=it.tipo==="entrada"?"entrada":"saida";
+      return { tipo:t, desc:it.desc, valor:Math.abs(+it.valor||0), catId:it.catId, membro:it.membro||membros[0]||"", contaId, formaPag:"Extrato", mes:+mes, ano:+ano, data:todayStr(), status:"confirmado", origem:"extrato" };
+    });
+    if(arr.length) onImport(arr);
+  };
+
+  return(
+    <Modal title={`📸 Importar ${isCartao?"fatura do cartão":"extrato da conta"}`} onClose={onClose} maxW={520}>
+      {!resultado?(
+        <>
+          <label style={{display:"block",border:"2px dashed #c7d2fe",borderRadius:16,padding:preview?8:"32px 16px",textAlign:"center",cursor:"pointer",background:"#f8f9ff",marginBottom:14}}>
+            {preview
+              ? <img src={preview} alt="prévia" style={{maxWidth:"100%",maxHeight:280,borderRadius:10,display:"block",margin:"0 auto"}}/>
+              : <><div style={{fontSize:30,marginBottom:8}}>📸</div><div style={{fontSize:13,color:"#6b7280",fontWeight:700}}>Toque para tirar foto ou escolher imagem</div><div style={{fontSize:11,color:"#9ca3af",marginTop:4}}>Print ou foto da {isCartao?"fatura do cartão":"tela do extrato"}</div></>
+            }
+            <input type="file" accept="image/*" capture="environment" onChange={escolher} style={{display:"none"}}/>
+          </label>
+          {erro&&<div style={{background:"#fef2f2",border:"1.5px solid #fecaca",color:"#b91c1c",borderRadius:12,padding:"10px 12px",fontSize:12,marginBottom:12}}>{erro}</div>}
+          <button onClick={extrair} disabled={!file||loading} style={{...S.btn(grad),width:"100%",padding:"13px 0",fontSize:14,opacity:(!file||loading)?.5:1}}>
+            {loading?"Analisando imagem…":"🤖 Extrair transações"}
+          </button>
+        </>
+      ):(
+        <>
+          <div style={{background:"#f8f9ff",border:"1.5px solid #e0e0f0",borderRadius:12,padding:"10px 12px",marginBottom:12}}>
+            <div style={{fontSize:11,color:"#6b7280",marginBottom:8,fontWeight:600}}>🏦 {resultado.banco||"Banco"}{resultado.periodo?` · ${resultado.periodo}`:""}</div>
+            <div style={{display:"flex",gap:8}}>
+              {isCartao
+                ? <select value={cartao} onChange={e=>setCartao(e.target.value)} style={{...S.inp,fontSize:12,flex:1}}>{CARTOES_LISTA.map(c=><option key={c}>{c}</option>)}</select>
+                : <select value={contaId} onChange={e=>setContaId(e.target.value)} style={{...S.inp,fontSize:12,flex:1}}>{CONTAS_LISTA.map(c=><option key={c}>{c}</option>)}</select>}
+              <select value={mes} onChange={e=>setMes(+e.target.value)} style={{...S.inp,fontSize:12,width:118}}>{MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}</select>
+              <input value={ano} onChange={e=>setAno(+e.target.value)} type="number" style={{...S.inp,fontSize:12,width:76}}/>
+            </div>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,color:"#6b7280",marginBottom:10}}>
+            <span>{selecionados.length} de {itens.length} selecionados</span>
+            <span style={{fontWeight:800,color:"#1f2937"}}>{fmt(totalSel)}</span>
+          </div>
+          <div style={{maxHeight:"42vh",overflowY:"auto",marginBottom:14}}>
+            {itens.map(it=>{
+              const est=it.tipo==="estorno";
+              const inflow=it.tipo==="entrada"||est;
+              const cats=inflow?CATS_RECEITA:CATS_DESPESA;
+              return(
+                <div key={it._i} style={{background:est?"#fef2f2":"#fff",border:`1.5px solid ${est?"#fecaca":"#f0f0f5"}`,borderRadius:12,padding:"10px 12px",marginBottom:8,opacity:it.sel?1:.5}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                    <input type="checkbox" checked={it.sel} onChange={e=>upd(it._i,"sel",e.target.checked)} style={{width:16,height:16,accentColor:PURPLE,flexShrink:0}}/>
+                    <input value={it.desc} onChange={e=>upd(it._i,"desc",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:12,flex:1}}/>
+                    <input value={it.valor} onChange={e=>upd(it._i,"valor",e.target.value)} type="number" style={{...S.inp,padding:"6px 8px",fontSize:12,width:82,color:est?"#ef4444":"#1f2937",fontWeight:700}}/>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",paddingLeft:24,marginBottom:6}}>
+                    {it.data&&<span style={{fontSize:10,color:"#9ca3af",fontWeight:700}}>📅 {it.data}</span>}
+                    {it.parcela&&<span style={{fontSize:10,fontWeight:800,color:"#f97316",background:"#ffedd5",borderRadius:6,padding:"1px 6px"}}>▣ {it.parcela}</span>}
+                    {est&&<span style={{fontSize:10,fontWeight:800,color:"#ef4444",background:"#fee2e2",borderRadius:6,padding:"1px 6px"}}>↩ estorno</span>}
+                    {it.titular&&<span style={{fontSize:10,color:"#9ca3af"}}>· {it.titular}</span>}
+                  </div>
+                  <div style={{display:"flex",gap:6,paddingLeft:24}}>
+                    <select value={it.catId} onChange={e=>upd(it._i,"catId",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:1}}>
+                      <option value="">— Categoria —</option>
+                      {cats.map(c=><option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+                    </select>
+                    <select value={it.membro} onChange={e=>upd(it._i,"membro",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,width:108}}>
+                      {membros.length?membros.map(m=><option key={m}>{m}</option>):<option value="">—</option>}
+                    </select>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {erro&&<div style={{background:"#fef2f2",border:"1.5px solid #fecaca",color:"#b91c1c",borderRadius:12,padding:"10px 12px",fontSize:12,marginBottom:12}}>{erro}</div>}
+          <button onClick={importar} disabled={!selecionados.length} style={{...S.btn(grad),width:"100%",padding:"13px 0",fontSize:14,opacity:selecionados.length?1:.5}}>
+            ✓ Importar {selecionados.length} selecionado(s)
+          </button>
+          <button onClick={()=>{setResultado(null);setItens([]);setFile(null);setPreview("");setErro("");}} style={{...S.btn("#f3f4f6","#374151"),width:"100%",padding:"11px 0",marginTop:8}}>← Nova imagem</button>
+        </>
+      )}
     </Modal>
   );
 }
