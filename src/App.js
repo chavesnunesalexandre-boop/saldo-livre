@@ -379,6 +379,7 @@ function MainApp({familyCode,user,onLogout}){
   const [contas,setContas]=useState([]);
   const [investimentos,setInvestimentos]=useState([]);
   const [membros,setMembros]=useState([]);
+  const [config,setConfig]=useState({});
   const [loading,setLoading]=useState(true);
   const [toast,setToast]=useState(null);
   const [modal,setModal]=useState(null); // {tipo, data}
@@ -386,6 +387,8 @@ function MainApp({familyCode,user,onLogout}){
   const fp=col=>famPath(familyCode,col);
   const toast2=(msg,ok=true)=>{setToast({msg,ok});setTimeout(()=>setToast(null),2600);};
   const nomesMembros=membros.map(m=>m.nome).filter(Boolean);
+  const diaFechamento=+config.diaFechamento||31;
+  const vencimentos=config.vencimentos||{};
 
   useEffect(()=>{
     const fp=col=>famPath(familyCode,col);
@@ -396,6 +399,7 @@ function MainApp({familyCode,user,onLogout}){
       onSnapshot(collection(db,fp("contas")),s=>setContas(s.docs.map(d=>({id:d.id,...d.data()})))),
       onSnapshot(collection(db,fp("investimentos")),s=>setInvestimentos(s.docs.map(d=>({id:d.id,...d.data()})))),
       onSnapshot(collection(db,fp("membros")),s=>setMembros(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.nome||"").localeCompare(b.nome||"")))),
+      onSnapshot(doc(db,"familias",familyCode),s=>setConfig(s.data()||{})),
     ];
     setLoading(false);
     return()=>unsubs.forEach(u=>u());
@@ -432,6 +436,7 @@ function MainApp({familyCode,user,onLogout}){
     toast2("Membro adicionado!");
   };
   const deleteMembro=async(id)=>{await deleteDoc(doc(db,fp("membros"),String(id)));toast2("Membro removido.");};
+  const saveConfigFin=async(patch)=>{ await setDoc(doc(db,`familias/${familyCode}`),patch,{merge:true}); toast2("Configurações salvas!"); };
   const confirmarPendente=async(p,valorReal)=>{
     const tm=BASE_TIPOS[p.baseTipo]||BASE_TIPOS.despesa_fixa;
     const entry={
@@ -498,15 +503,16 @@ function MainApp({familyCode,user,onLogout}){
 
   const totalInvestido=investimentos.reduce((s,i)=>s+(+i.saldoAtual||0),0);
 
-  // Por dia
+  // Por dia — usa configurações financeiras da família (dia de fechamento + vencimentos)
   const now=new Date();
   const isNow=viewMes===now.getMonth()&&viewAno===now.getFullYear();
-  const ultimoDia=new Date(viewAno,viewMes+1,0).getDate();
-  const diasFim=isNow?Math.max(1,ultimoDia-now.getDate()):ultimoDia;
-  const dias26=isNow?(now.getDate()<=26?26-now.getDate():Math.max(1,Math.ceil((new Date(viewAno,viewMes+1,26)-now)/86400000))):26;
+  const ultimoDiaMes=new Date(viewAno,viewMes+1,0).getDate();
+  const diasAteDia=(dia)=>{ const d=Math.max(1,Math.min(+dia||31,ultimoDiaMes)); if(!isNow) return d; return now.getDate()<=d?Math.max(1,d-now.getDate()):Math.max(1,Math.ceil((new Date(viewAno,viewMes+1,d)-now)/86400000)); };
+  const diasFim=diasAteDia(diaFechamento);
+  const diasVenc=Math.min(...CARTOES_LISTA.map(c=>diasAteDia(+(vencimentos[c]||25))));
   const saldoProximo=saldoLivre; // simplificado
-  const vpdVista=saldoLivre/diasFim;
-  const vpdCartao=saldoProximo/Math.max(1,dias26);
+  const vpdVista=saldoLivre/Math.max(1,diasFim);
+  const vpdCartao=saldoProximo/Math.max(1,diasVenc);
 
   if(loading) return <div style={{background:"linear-gradient(135deg,#6c63ff,#a78bfa)",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontFamily:"Inter,sans-serif",fontSize:16,fontWeight:700}}>💚 Carregando...</div>;
 
@@ -592,7 +598,7 @@ function MainApp({familyCode,user,onLogout}){
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {[
                   {label:"💵 À vista / dia",val:vpdVista,sub:`÷ ${diasFim} dias`,semana:vpdVista*7,color:"#10b981"},
-                  {label:"💳 Cartão / dia",val:vpdCartao,sub:`÷ ${dias26} dias`,semana:vpdCartao*7,color:"#f97316"},
+                  {label:"💳 Cartão / dia",val:vpdCartao,sub:`÷ ${diasVenc} dias`,semana:vpdCartao*7,color:"#f97316"},
                 ].map(({label,val,sub,semana,color})=>(
                   <div key={label} style={{background:"#fff",borderRadius:16,padding:"14px",boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
                     <div style={{fontSize:10,color:"#9ca3af",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>{label}</div>
@@ -689,7 +695,7 @@ function MainApp({familyCode,user,onLogout}){
 
       {/* CONFIGURAÇÕES */}
       {tab==="config"&&(
-        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} membros={membros} onAddMembro={saveMembro} onDelMembro={deleteMembro} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout}/>
+        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} membros={membros} onAddMembro={saveMembro} onDelMembro={deleteMembro} config={config} onSaveConfig={saveConfigFin} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout}/>
       )}
 
       {/* FAB */}
@@ -1386,8 +1392,40 @@ function ConfirmPendenteModal({pendente,onConfirm,onClose}){
   );
 }
 
+// ─── Configurações Financeiras ───────────────────────────────────────────────
+function ConfigFinanceira({config,onSave}){
+  const [dia,setDia]=useState(config.diaFechamento||31);
+  const [venc,setVenc]=useState({...config.vencimentos});
+  useEffect(()=>{ setDia(config.diaFechamento||31); setVenc({...config.vencimentos}); },[config]);
+  const setV=(c,v)=>setVenc(p=>({...p,[c]:v}));
+  const clamp=(v,d)=>Math.max(1,Math.min(31,Math.round(+v||d)));
+  const salvar=()=>{
+    const vobj={}; CARTOES_LISTA.forEach(c=>{ vobj[c]=clamp(venc[c],25); });
+    onSave({diaFechamento:clamp(dia,31), vencimentos:vobj});
+  };
+  return(
+    <div style={{marginBottom:18}}>
+      <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:4}}>⚙️ Configurações Financeiras</div>
+      <div style={{fontSize:11,color:"#9ca3af",marginBottom:12}}>Usadas nos cálculos de "livre por dia" do painel.</div>
+      <Field label="Dia de fechamento do mês (1–31)">
+        <input value={dia} onChange={e=>setDia(e.target.value)} type="number" min="1" max="31" style={S.inp}/>
+      </Field>
+      <div style={{fontSize:11,color:"#6b7280",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",margin:"4px 0 8px"}}>Vencimento por cartão</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        {CARTOES_LISTA.map(c=>(
+          <Field key={c} label={c} half>
+            <input value={venc[c]??25} onChange={e=>setV(c,e.target.value)} type="number" min="1" max="31" style={S.inp}/>
+          </Field>
+        ))}
+      </div>
+      <button onClick={salvar} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",padding:"12px 0",fontSize:13,marginTop:6}}>💾 Salvar configurações</button>
+      <div style={{height:1,background:"#f0f0f5",margin:"16px 0 0"}}/>
+    </div>
+  );
+}
+
 // ─── Tab Configurações ────────────────────────────────────────────────────────
-function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,onDelMembro,onAdd,onEdit,onDelete,onLogout}){
+function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,onDelMembro,config={},onSaveConfig,onAdd,onEdit,onDelete,onLogout}){
   const [novoMembro,setNovoMembro]=useState("");
   const addM2=()=>{ const n=novoMembro.trim(); if(!n) return; onAddMembro&&onAddMembro(n); setNovoMembro(""); };
   return(
@@ -1456,6 +1494,9 @@ function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,
             </div>
           );
         })}
+        {/* Configurações Financeiras */}
+        <ConfigFinanceira config={config} onSave={onSaveConfig}/>
+
         {/* Sair */}
         <div style={{borderTop:"1.5px solid #e5e7eb",marginTop:8,paddingTop:16,marginBottom:20}}>
           <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:10}}>🚪 Sair</div>
