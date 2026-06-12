@@ -468,6 +468,19 @@ function MainApp({familyCode,user,onLogout}){
     setModal(null); setTab("inicio");
     toast2("Dados resetados com sucesso");
   };
+  const limparDuplicatas=async()=>{
+    const snap=await getDocs(collection(db,fp("lancamentos")));
+    const grupos={};
+    snap.docs.forEach(d=>{ const l={id:d.id,...d.data()}; const k=chaveDedup(l.data,l.valor,l.desc); (grupos[k]=grupos[k]||[]).push(l); });
+    const toDel=[];
+    Object.values(grupos).forEach(g=>{
+      if(g.length<=1) return;
+      g.sort((a,b)=>(a.updatedAt||0)-(b.updatedAt||0)); // mantém o mais antigo
+      g.slice(1).forEach(x=>toDel.push(x.id));
+    });
+    await Promise.all(toDel.map(id=>deleteDoc(doc(db,fp("lancamentos"),id))));
+    toast2(`${toDel.length} duplicata(s) removida(s)`);
+  };
   const confirmarPendente=async(p,valorReal)=>{
     const tm=BASE_TIPOS[p.baseTipo]||BASE_TIPOS.despesa_fixa;
     const entry={
@@ -783,7 +796,7 @@ function MainApp({familyCode,user,onLogout}){
 
       {/* CONFIGURAÇÕES */}
       {tab==="config"&&(
-        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} membros={membros} onAddMembro={saveMembro} onDelMembro={deleteMembro} config={config} onSaveConfig={saveConfigFin} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout} onReset={()=>setModal({tipo:"reset"})}/>
+        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} membros={membros} onAddMembro={saveMembro} onDelMembro={deleteMembro} config={config} onSaveConfig={saveConfigFin} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout} onReset={()=>setModal({tipo:"reset"})} onLimparDup={limparDuplicatas}/>
       )}
 
       {/* FAB */}
@@ -1492,6 +1505,24 @@ function _lev(a,b){ const m=a.length,n=b.length; if(!m) return n; if(!n) return 
 function descSimilar(a,b){ const x=_normTxt(a),y=_normTxt(b); if(!x||!y) return 0; if(x===y) return 1; return 1-_lev(x,y)/Math.max(x.length,y.length); }
 function ehDuplicata(it,lista){ return lista.some(e=>e.data===it.data&&Math.abs((+e.valor||0)-(+it.valor||0))<0.01&&descSimilar(e.desc,it.desc)>=0.8); }
 function detectarBanco(txt,lista){ const b=(txt||"").toLowerCase(); const f=lista.find(c=>b.includes(c.toLowerCase())); if(f) return f; if(b.includes("nu")) return "Nubank"; return ""; }
+// Normaliza a data para DD/MM (aceita "DD/MM", "DD-MM", "DD/MM/AAAA", "DD mmm", "AAAA-MM-DD")
+function normDataKey(d){
+  const s=(d||"").toString().trim().toLowerCase();
+  let m=s.match(/(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})/); // AAAA-MM-DD
+  if(m) return `${m[3].padStart(2,"0")}/${m[2].padStart(2,"0")}`;
+  m=s.match(/(\d{1,2})[/\-.](\d{1,2})/); // DD/MM
+  if(m) return `${m[1].padStart(2,"0")}/${m[2].padStart(2,"0")}`;
+  const meses={jan:"01",fev:"02",mar:"03",abr:"04",mai:"05",jun:"06",jul:"07",ago:"08",set:"09",out:"10",nov:"11",dez:"12"};
+  m=s.match(/(\d{1,2})\s*([a-z]{3})/); // DD mmm
+  if(m&&meses[m[2]]) return `${m[1].padStart(2,"0")}/${meses[m[2]]}`;
+  return s;
+}
+// Chave de deduplicação: DD/MM _ valor(2 casas) _ descrição(uppercase, 15 chars)
+function chaveDedup(data,valor,desc){
+  const v=(Math.round((+valor||0)*100)/100).toFixed(2);
+  const dk=(desc||"").toUpperCase().replace(/\s+/g," ").trim().substring(0,15);
+  return `${normDataKey(data)}_${v}_${dk}`;
+}
 function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno}){
   const [tipo,setTipo]=useState(contexto);
   const isCartao=tipo==="cartao";
@@ -1504,6 +1535,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno})
   const [resultado,setResultado]=useState(false);
   const [bancoDetectado,setBancoDetectado]=useState("");
   const [periodo,setPeriodo]=useState("");
+  const [descartados,setDescartados]=useState(0);
   const [itens,setItens]=useState([]);
   const [mes,setMes]=useState(viewMes);
   const [ano,setAno]=useState(viewAno);
@@ -1512,7 +1544,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno})
 
   const extrair=async()=>{
     if(!files.length) return; setErro(""); setLoading(true);
-    const acc=[]; let bDet="", per="";
+    const acc=[]; const vistos=new Set(); let bDet="", per="", total=0;
     try{
       for(let k=0;k<files.length;k++){
         setProgresso(`Analisando imagem ${k+1} de ${files.length}...`);
@@ -1522,7 +1554,11 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno})
         if(j.error) throw new Error(j.error);
         if(!bDet&&j.banco) bDet=j.banco;
         if(!per&&j.periodo) per=j.periodo;
+        total+=(j.itens||[]).length;
         (j.itens||[]).forEach(it=>{
+          const chave=chaveDedup(it.data,it.valor,it.desc);
+          if(vistos.has(chave)) return; // duplicata entre prints — descarta silenciosamente
+          vistos.add(chave);
           const pag=!isCartao&&RX_PGTO_FAT.test(it.desc||"");
           const inflow=it.tipo==="entrada"||it.tipo==="estorno";
           const novo={
@@ -1539,7 +1575,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno})
         });
       }
       acc.forEach((it,i)=>{it._i=i;});
-      setItens(acc); setBancoDetectado(bDet); setPeriodo(per); setResultado(true);
+      setItens(acc); setBancoDetectado(bDet); setPeriodo(per); setDescartados(total-acc.length); setResultado(true);
       if(!banco){ const m=detectarBanco(bDet,BANCOS_IMPORT); if(m) setBanco(m); }
       if(!acc.length) setErro("Nenhuma transação reconhecida. Tente imagens mais nítidas.");
     }catch(e){ setErro("Falha ao extrair: "+e.message); }
@@ -1623,7 +1659,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno})
             </div>
           </div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,color:"#6b7280",marginBottom:10}}>
-            <span>{selecionados.length} de {itens.length} selecionados{dups>0?` · ${dups} duplicata(s)`:""}</span>
+            <span>{selecionados.length} de {itens.length} selecionados{descartados>0?` · ${descartados} duplicata(s) descartada(s)`:""}{dups>0?` · ${dups} similar(es)`:""}</span>
             <span style={{fontWeight:800,color:"#1f2937"}}>{fmt(totalSel)}</span>
           </div>
           <div style={{maxHeight:"42vh",overflowY:"auto",marginBottom:14}}>
@@ -1856,7 +1892,7 @@ function ConfigFinanceira({config,onSave}){
 }
 
 // ─── Tab Configurações ────────────────────────────────────────────────────────
-function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,onDelMembro,config={},onSaveConfig,onAdd,onEdit,onDelete,onLogout,onReset}){
+function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,onDelMembro,config={},onSaveConfig,onAdd,onEdit,onDelete,onLogout,onReset,onLimparDup}){
   const [novoMembro,setNovoMembro]=useState("");
   const addM2=()=>{ const n=novoMembro.trim(); if(!n) return; onAddMembro&&onAddMembro(n); setNovoMembro(""); };
   return(
@@ -1927,6 +1963,13 @@ function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,
         })}
         {/* Configurações Financeiras */}
         <ConfigFinanceira config={config} onSave={onSaveConfig}/>
+
+        {/* Manutenção */}
+        <div style={{marginBottom:18}}>
+          <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:8}}>🧹 Manutenção</div>
+          <button onClick={onLimparDup} style={{width:"100%",background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:12,padding:"12px 0",color:"#2563eb",fontWeight:800,fontSize:13,cursor:"pointer"}}>🧹 Limpar duplicatas</button>
+          <div style={{fontSize:11,color:"#9ca3af",marginTop:6}}>Remove lançamentos repetidos (mesma data, valor e descrição), mantendo o mais antigo de cada grupo.</div>
+        </div>
 
         {/* Sair */}
         <div style={{borderTop:"1.5px solid #e5e7eb",marginTop:8,paddingTop:16,marginBottom:20}}>
