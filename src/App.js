@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db, auth } from "./firebase";
 import { collection, doc, onSnapshot, setDoc, deleteDoc, getDoc } from "firebase/firestore";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
@@ -380,6 +380,12 @@ function MainApp({familyCode,user,onLogout}){
   const [investimentos,setInvestimentos]=useState([]);
   const [membros,setMembros]=useState([]);
   const [config,setConfig]=useState({});
+  const [analises,setAnalises]=useState([]);
+  const [consultorOpen,setConsultorOpen]=useState(false);
+  const [consultorLoading,setConsultorLoading]=useState(false);
+  const [consultorErro,setConsultorErro]=useState("");
+  const [badgeVisto,setBadgeVisto]=useState(false);
+  const autoRan=useRef(false);
   const [loading,setLoading]=useState(true);
   const [toast,setToast]=useState(null);
   const [modal,setModal]=useState(null); // {tipo, data}
@@ -400,6 +406,7 @@ function MainApp({familyCode,user,onLogout}){
       onSnapshot(collection(db,fp("investimentos")),s=>setInvestimentos(s.docs.map(d=>({id:d.id,...d.data()})))),
       onSnapshot(collection(db,fp("membros")),s=>setMembros(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.nome||"").localeCompare(b.nome||"")))),
       onSnapshot(doc(db,"familias",familyCode),s=>setConfig(s.data()||{})),
+      onSnapshot(collection(db,fp("analises")),s=>setAnalises(s.docs.map(d=>({id:d.id,...d.data()})))),
     ];
     setLoading(false);
     return()=>unsubs.forEach(u=>u());
@@ -514,6 +521,49 @@ function MainApp({familyCode,user,onLogout}){
   const vpdVista=saldoLivre/Math.max(1,diasFim);
   const vpdCartao=saldoProximo/Math.max(1,diasVenc);
 
+  // ── Consultor IA ────────────────────────────────────────────────────────────
+  const buildDados=(mes,ano)=>{
+    const conf=lancs.filter(l=>l.mes===mes&&l.ano===ano&&l.status==="confirmado");
+    const gpc={};
+    conf.forEach(l=>{ if(l.tipo==="saida"||l.tipo==="cartao"){ if(l.splits&&l.splits.length) l.splits.forEach(s=>{if(s.catId)gpc[s.catId]=(gpc[s.catId]||0)+(+s.valor||0);}); else if(l.catId) gpc[l.catId]=(gpc[l.catId]||0)+(+l.valor||0); } });
+    const ent=conf.filter(l=>l.tipo==="entrada").reduce((s,l)=>s+(+l.valor||0),0);
+    const sai=conf.filter(l=>l.tipo==="saida").reduce((s,l)=>s+(+l.valor||0),0);
+    const cart=lancs.filter(l=>l.tipo==="cartao"&&l.mesFatura===mes&&l.anoFatura===ano).reduce((s,l)=>s+(+l.valor||0),0);
+    const prev=getMonthView(baseItems,lancs,mes,ano,gpc).filter(p=>p.baseTipo==="prevista");
+    const totalPrev=prev.reduce((s,p)=>s+p.valorPrevisto,0);
+    const gastosPorCategoria=Object.entries(gpc).map(([catId,valor])=>({nome:getCat(catId,customCats).label,valor:Math.round(valor*100)/100,percentual:0})).sort((x,y)=>y.valor-x.valor);
+    const totGasto=gastosPorCategoria.reduce((s,c)=>s+c.valor,0)||1;
+    gastosPorCategoria.forEach(c=>{c.percentual=Math.round(c.valor/totGasto*100);});
+    const historico3Meses=[1,2,3].map(i=>{ const r=addM(mes,ano,-i); const c=lancs.filter(l=>l.status==="confirmado"&&l.mes===r.mes&&l.ano===r.ano); return { mes:MESES[r.mes], ano:r.ano, entradas:Math.round(c.filter(l=>l.tipo==="entrada").reduce((s,l)=>s+(+l.valor||0),0)*100)/100, saidas:Math.round(c.filter(l=>l.tipo==="saida").reduce((s,l)=>s+(+l.valor||0),0)*100)/100, cartao:Math.round(lancs.filter(l=>l.tipo==="cartao"&&l.mesFatura===r.mes&&l.anoFatura===r.ano).reduce((s,l)=>s+(+l.valor||0),0)*100)/100 }; });
+    return { mesReferencia:`${MESES[mes]} ${ano}`, totalEntradas:Math.round(ent*100)/100, totalSaidas:Math.round(sai*100)/100, totalCartao:Math.round(cart*100)/100, saldoLivre:Math.round((totalContas-cart-totalPrev)*100)/100, gastosPorCategoria, historico3Meses, totalInvestido:Math.round(totalInvestido*100)/100, previstasPendentes:prev.map(p=>({desc:p.desc,restante:Math.round(p.valorPrevisto*100)/100})) };
+  };
+  const gerarAnalise=async(mes,ano)=>{
+    setConsultorLoading(true); setConsultorErro("");
+    try{
+      const dados=buildDados(mes,ano);
+      const r=await fetch("/api/consultor",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dados)});
+      const j=await r.json();
+      if(j.error) throw new Error(j.error);
+      await setDoc(doc(db,fp("analises"),`${mes}-${ano}`),{...j,mes,ano,data:Date.now()});
+    }catch(e){ setConsultorErro("Falha ao gerar análise: "+e.message); }
+    setConsultorLoading(false);
+  };
+  const abrirConsultor=()=>{
+    setConsultorOpen(true); setBadgeVisto(true); setConsultorErro("");
+    const id=`${viewMes}-${viewAno}`;
+    if(!analises.some(a=>a.id===id)&&!consultorLoading) gerarAnalise(viewMes,viewAno);
+  };
+  const mesAtualId=`${HOJE.getMonth()}-${HOJE.getFullYear()}`;
+  const mostrarBadge=analises.some(a=>a.id===mesAtualId)&&!badgeVisto;
+  useEffect(()=>{
+    if(loading) return;
+    const mA=HOJE.getMonth(), aA=HOJE.getFullYear();
+    if(analises.some(a=>a.id===`${mA}-${aA}`)) return;
+    const nConf=lancs.filter(l=>l.status==="confirmado"&&l.mes===mA&&l.ano===aA).length;
+    if(nConf>=5&&!autoRan.current){ autoRan.current=true; gerarAnalise(mA,aA); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[loading,analises,lancs]);
+
   if(loading) return <div style={{background:"linear-gradient(135deg,#6c63ff,#a78bfa)",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontFamily:"Inter,sans-serif",fontSize:16,fontWeight:700}}>💚 Carregando...</div>;
 
   return(
@@ -529,6 +579,7 @@ function MainApp({familyCode,user,onLogout}){
       {modal?.tipo==="transferencia"&&<TransfForm data={modal.data} onSave={saveTransferencia} onClose={()=>setModal(null)} contas={contas} viewMes={viewMes} viewAno={viewAno}/>}
       {modal?.tipo==="investimento"&&<InvestForm data={modal.data} onSave={saveInvest} onClose={()=>setModal(null)}/>}
       {modal?.tipo==="relatorioIR"&&<RelatorioIR lancs={lancs} onClose={()=>setModal(null)}/>}
+      {consultorOpen&&<ConsultorFinanceiro analises={analises} atualId={`${viewMes}-${viewAno}`} mesLabel={`${MESES[viewMes]} ${viewAno}`} loading={consultorLoading} erro={consultorErro} onGerar={()=>gerarAnalise(viewMes,viewAno)} onClose={()=>setConsultorOpen(false)}/>}
 
       {/* INÍCIO */}
       {tab==="inicio"&&(
@@ -536,13 +587,24 @@ function MainApp({familyCode,user,onLogout}){
           {/* Header */}
           <div style={{background:`linear-gradient(135deg,${PURPLE} 0%,#a78bfa 100%)`,padding:"24px 20px 48px",borderRadius:"0 0 32px 32px",position:"relative",overflow:"hidden"}}>
             <div style={{position:"absolute",top:-40,right:-40,width:160,height:160,background:"rgba(255,255,255,0.08)",borderRadius:"50%"}}/>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,position:"relative",zIndex:1}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:mostrarBadge?12:20,position:"relative",zIndex:1}}>
               <div>
                 <div style={{color:"rgba(255,255,255,0.75)",fontSize:13,fontWeight:500}}>Olá,</div>
                 <div style={{color:"#fff",fontSize:20,fontWeight:900}}>{user?.email?.split("@")[0]} 👋</div>
               </div>
-              <button onClick={()=>setTab("config")} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:50,width:38,height:38,cursor:"pointer",color:"#fff",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>⚙️</button>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <button onClick={abrirConsultor} style={{position:"relative",background:"rgba(255,255,255,0.15)",border:"none",borderRadius:50,height:38,padding:"0 14px",cursor:"pointer",color:"#fff",fontSize:13,fontWeight:800,display:"flex",alignItems:"center",gap:6}}>
+                  🤖 Consultor
+                  {mostrarBadge&&<span style={{position:"absolute",top:-2,right:-2,width:11,height:11,background:"#ef4444",border:"2px solid #8b7ff0",borderRadius:"50%"}}/>}
+                </button>
+                <button onClick={()=>setTab("config")} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:50,width:38,height:38,cursor:"pointer",color:"#fff",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>⚙️</button>
+              </div>
             </div>
+            {mostrarBadge&&(
+              <div onClick={abrirConsultor} style={{background:"rgba(255,255,255,0.18)",borderRadius:12,padding:"8px 12px",marginBottom:14,cursor:"pointer",color:"#fff",fontSize:12,fontWeight:700,position:"relative",zIndex:1}}>
+                📊 Nova análise disponível
+              </div>
+            )}
             <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:16,marginBottom:16,position:"relative",zIndex:1}}>
               <button onClick={()=>{const r=addM(viewMes,viewAno,-1);setViewMes(r.mes);setViewAno(r.ano);}} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",width:32,height:32,borderRadius:"50%",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
               <div style={{color:"#fff",fontSize:17,fontWeight:700}}>{MESES[viewMes]} {viewAno}</div>
@@ -1389,6 +1451,129 @@ function ConfirmPendenteModal({pendente,onConfirm,onClose}){
         ✓ Confirmar {tm.lancTipo==="entrada"?"recebimento":"pagamento"}
       </button>
     </Modal>
+  );
+}
+
+// ─── Consultor Financeiro IA ─────────────────────────────────────────────────
+function ConsultorFinanceiro({analises,atualId,mesLabel,loading,erro,onGerar,onClose}){
+  const sorted=[...analises].sort((x,y)=>(y.data||0)-(x.data||0));
+  const [view,setView]=useState("atual");
+  const [selId,setSelId]=useState(atualId);
+  const a=sorted.find(x=>x.id===selId)||sorted.find(x=>x.id===atualId)||null;
+  const corNota=n=>n>=7?"#10b981":n>=5?"#f59e0b":"#ef4444";
+  const PIE=["#6c63ff","#10b981","#f97316","#ef4444","#a855f7","#0ea5e9","#f59e0b","#ec4899","#14b8a6"];
+  const ICON={positivo:"✅",alerta:"⚠️",neutro:"ℹ️"};
+  const AVA={ok:{c:"#10b981",l:"ok"},alto:{c:"#f59e0b",l:"alto"},critico:{c:"#ef4444",l:"crítico"}};
+  const pill={background:"rgba(255,255,255,0.18)",border:"none",borderRadius:50,color:"#fff",padding:"8px 12px",cursor:"pointer",fontSize:12,fontWeight:800};
+  let pieGrad="#e5e7eb";
+  if(a&&a.categorias&&a.categorias.length){ let acc=0; const stops=a.categorias.map((c,i)=>{const st=acc;acc=Math.min(100,acc+(+c.percentual||0));return `${PIE[i%PIE.length]} ${st}% ${acc}%`;}); pieGrad=`conic-gradient(${stops.join(",")})`; }
+  const nota=a?Math.round((+a.notaSaude||0)*10)/10:0;
+  return(
+    <div style={{position:"fixed",inset:0,background:"#f0f4ff",zIndex:600,overflowY:"auto",fontFamily:"'Inter','Segoe UI',sans-serif"}}>
+      <div style={{background:`linear-gradient(135deg,${PURPLE},#a78bfa)`,padding:"18px 16px",position:"sticky",top:0,zIndex:2,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{color:"#fff",fontSize:18,fontWeight:900}}>🤖 Consultor</div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setView(view==="historico"?"atual":"historico")} style={pill}>📅 Histórico</button>
+          <button onClick={onClose} style={{...pill,width:36,padding:"8px 0",textAlign:"center"}}>✕</button>
+        </div>
+      </div>
+      <div style={{maxWidth:480,margin:"0 auto",padding:16}}>
+        {erro&&<div style={{background:"#fef2f2",border:"1.5px solid #fecaca",color:"#b91c1c",borderRadius:12,padding:"10px 12px",fontSize:12,marginBottom:14}}>{erro}</div>}
+        {view==="historico"?(
+          <div>
+            <div style={{fontSize:15,fontWeight:800,color:"#374151",marginBottom:12}}>📅 Análises anteriores</div>
+            {sorted.length===0?<div style={{textAlign:"center",color:"#9ca3af",padding:"24px 0",fontSize:13}}>Nenhuma análise ainda.</div>
+            :sorted.map(an=>(
+              <button key={an.id} onClick={()=>{setSelId(an.id);setView("atual");}} style={{width:"100%",textAlign:"left",background:"#fff",border:"1.5px solid #f0f0f5",borderRadius:14,padding:"12px 14px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:40,height:40,borderRadius:"50%",background:corNota(an.notaSaude)+"20",color:corNota(an.notaSaude),display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:900,flexShrink:0}}>{Math.round(an.notaSaude)}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"#1f2937"}}>{MESES[an.mes]} {an.ano}</div>
+                  <div style={{fontSize:11,color:"#9ca3af",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{an.resumo}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        ):loading&&!a?(
+          <div style={{textAlign:"center",padding:"60px 0"}}>
+            <div style={{fontSize:32,marginBottom:12}}>🤖</div>
+            <div style={{fontSize:14,fontWeight:700,color:PURPLE}}>Analisando suas finanças…</div>
+            <div style={{fontSize:12,color:"#9ca3af",marginTop:6}}>Isso leva alguns segundos.</div>
+          </div>
+        ):!a?(
+          <div style={{textAlign:"center",padding:"48px 0"}}>
+            <div style={{fontSize:32,marginBottom:12}}>📊</div>
+            <div style={{fontSize:14,color:"#6b7280",marginBottom:16}}>Ainda não há análise para {mesLabel}.</div>
+            <button onClick={onGerar} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),padding:"12px 24px",fontSize:14}}>🤖 Gerar análise</button>
+          </div>
+        ):(
+          <>
+            <div style={{display:"flex",alignItems:"center",gap:16,background:"#fff",borderRadius:20,padding:"18px",marginBottom:16,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
+              <div style={{width:84,height:84,borderRadius:"50%",background:`conic-gradient(${corNota(nota)} ${nota*10}%, #e5e7eb 0)`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <div style={{width:64,height:64,borderRadius:"50%",background:"#fff",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                  <span style={{fontSize:24,fontWeight:900,color:corNota(nota)}}>{nota}</span>
+                  <span style={{fontSize:9,color:"#9ca3af",fontWeight:700}}>/ 10</span>
+                </div>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:11,color:"#9ca3af",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>Saúde financeira</div>
+                <div style={{fontSize:15,fontWeight:800,color:corNota(nota)}}>{nota>=7?"Muito boa 💚":nota>=5?"Atenção 💛":"Crítica ❤️"}</div>
+                <div style={{fontSize:11,color:"#9ca3af",marginTop:2}}>{MESES[a.mes]} {a.ano}{a.data?` · ${new Date(a.data).toLocaleDateString("pt-BR")}`:""}</div>
+              </div>
+            </div>
+            <div style={{background:`${PURPLE}10`,border:`1.5px solid ${PURPLE}30`,borderRadius:16,padding:"14px 16px",marginBottom:16,fontSize:14,fontWeight:600,color:"#374151",lineHeight:1.5}}>{a.resumo}</div>
+            {a.categorias&&a.categorias.length>0&&(
+              <div style={{background:"#fff",borderRadius:20,padding:"18px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
+                <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:14}}>🥧 Gastos por categoria</div>
+                <div style={{display:"flex",alignItems:"center",gap:18}}>
+                  <div style={{width:120,height:120,borderRadius:"50%",background:pieGrad,flexShrink:0,boxShadow:"inset 0 0 0 1px rgba(0,0,0,0.04)"}}/>
+                  <div style={{flex:1}}>
+                    {a.categorias.map((c,i)=>{const av=AVA[c.avaliacao]||AVA.ok;return(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                        <span style={{width:10,height:10,borderRadius:3,background:PIE[i%PIE.length],flexShrink:0}}/>
+                        <span style={{flex:1,fontSize:11,fontWeight:700,color:"#374151",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.nome}</span>
+                        <span style={{fontSize:11,fontWeight:800,color:"#6b7280"}}>{c.percentual}%</span>
+                        <span style={{fontSize:9,fontWeight:800,color:av.c,background:av.c+"18",borderRadius:6,padding:"1px 5px"}}>{av.l}</span>
+                      </div>
+                    );})}
+                  </div>
+                </div>
+              </div>
+            )}
+            {a.insights&&a.insights.length>0&&(
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:10}}>💡 Insights</div>
+                {a.insights.map((ins,i)=>(
+                  <div key={i} style={{display:"flex",gap:10,background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,boxShadow:"0 2px 6px rgba(0,0,0,0.04)"}}>
+                    <span style={{fontSize:16,flexShrink:0}}>{ICON[ins.tipo]||"ℹ️"}</span>
+                    <span style={{fontSize:13,color:"#374151",lineHeight:1.5}}>{ins.texto}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {a.sugestoes&&a.sugestoes.length>0&&(
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:10}}>🎯 Sugestões</div>
+                {a.sugestoes.map((s,i)=>(
+                  <div key={i} style={{display:"flex",gap:10,background:"#fff",borderRadius:14,padding:"12px 14px",marginBottom:8,boxShadow:"0 2px 6px rgba(0,0,0,0.04)"}}>
+                    <span style={{width:22,height:22,borderRadius:"50%",background:PURPLE,color:"#fff",fontSize:11,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</span>
+                    <span style={{fontSize:13,color:"#374151",lineHeight:1.5}}>{s}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {a.comparacao&&(
+              <div style={{background:"#fff",borderRadius:16,padding:"14px 16px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
+                <div style={{fontSize:13,fontWeight:800,color:"#374151",marginBottom:6}}>📈 Comparação com meses anteriores</div>
+                <div style={{fontSize:13,color:"#6b7280",lineHeight:1.5}}>{a.comparacao}</div>
+              </div>
+            )}
+            <button onClick={onGerar} disabled={loading} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",padding:"13px 0",fontSize:14,marginBottom:24,opacity:loading?.6:1}}>
+              {loading?"Atualizando…":"🔄 Atualizar análise"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
