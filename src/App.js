@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { db, auth } from "./firebase";
 import { collection, doc, onSnapshot, setDoc, deleteDoc, getDoc } from "firebase/firestore";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { Html5Qrcode } from "html5-qrcode";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -332,6 +333,15 @@ function MainApp({familyCode,user,onLogout}){
     toast2(id?"Atualizado!":"Lançamento salvo!"); setModal(null);
   };
   const deleteLanc=async(id)=>{await deleteDoc(doc(db,fp("lancamentos"),String(id)));toast2("Removido.");};
+  const importNFe=async(items)=>{
+    const base=Date.now();
+    await Promise.all(items.map((it,i)=>setDoc(doc(db,fp("lancamentos"),String(base+i)),{
+      tipo:"saida", desc:it.nome, valor:+it.valor||0, catId:it.catId||"alimentacao_nr",
+      formaPag:"💳 Crédito", contaId:"", membro:MEMBROS[0], mes:viewMes, ano:viewAno,
+      data:todayStr(), status:"confirmado", origem:"nfe", updatedAt:base+i
+    })));
+    toast2(`${items.length} lançamento(s) importado(s)!`); setModal(null);
+  };
   const saveBase=async(data)=>{
     const {id,...rest}=data;
     await setDoc(doc(db,fp("baseItems"),id||String(Date.now())),{...rest,ativo:rest.ativo!==false});
@@ -414,7 +424,7 @@ function MainApp({familyCode,user,onLogout}){
       {toast&&<Toast msg={toast.msg} ok={toast.ok}/>}
 
       {/* Modais */}
-      {modal?.tipo==="lancamento"&&<LancForm data={modal.data} onSave={saveLanc} onClose={()=>setModal(null)} allCats={allCats} viewMes={viewMes} viewAno={viewAno}/>}
+      {modal?.tipo==="lancamento"&&<LancForm data={modal.data} onSave={saveLanc} onClose={()=>setModal(null)} allCats={allCats} viewMes={viewMes} viewAno={viewAno} onImportNFe={importNFe}/>}
       {modal?.tipo==="base"&&<BaseForm data={modal.data} onSave={saveBase} onClose={()=>setModal(null)} allCats={allCats}/>}
       {modal?.tipo==="transferencia"&&<TransfForm data={modal.data} onSave={saveTransferencia} onClose={()=>setModal(null)} contas={contas} viewMes={viewMes} viewAno={viewAno}/>}
       {modal?.tipo==="investimento"&&<InvestForm data={modal.data} onSave={saveInvest} onClose={()=>setModal(null)}/>}
@@ -884,9 +894,150 @@ function TabInvestimentos({investimentos,totalInvestido,onNovo,onEdit,onDelete,o
 }
 
 // ─── Forms ────────────────────────────────────────────────────────────────────
-function LancForm({data,onSave,onClose,allCats,viewMes,viewAno}){
+// ─── Leitor de NF-e ─────────────────────────────────────────────────────────────
+const NFE_KEYWORDS = [
+  {cat:"alimentacao_r",  kws:["arroz","feijao","feijão","leite","pao","pão","ovo","carne","frango","fruta","legume","verdura","cafe","café","acucar","açúcar","farinha","oleo","óleo","macarrao","macarrão","queijo","manteiga","tomate","cebola","batata","alface"]},
+  {cat:"alimentacao_nr", kws:["refrigerante","cerveja","chocolate","salgad","biscoito","bolacha","sorvete","pizza","lanche","doce","bala","suco","energetico","energético","whisky","vinho","vodka"]},
+  {cat:"medicamento",    kws:["dipirona","paracetamol","remedio","remédio","generico","genérico","comprimido","pomada","xarope","antibiotico","antibiótico","ibuprofeno","amoxicilina","losartana","omeprazol"]},
+  {cat:"higiene",        kws:["sabonete","shampoo","xampu","condicionador","creme dental","papel higienico","papel higiênico","fralda","absorvente","desodorante","escova de dente"]},
+  {cat:"limpeza",        kws:["detergente","sabao","sabão","amaciante","agua sanitaria","água sanitária","desinfetante","esponja","alvejante","limpador","multiuso"]},
+  {cat:"vestuario",      kws:["camisa","calca","calça","blusa","sapato","tenis","tênis","meia","vestido","bermuda"]},
+];
+function sugerirCategoria(nome){
+  const n=(nome||"").toLowerCase();
+  for(const g of NFE_KEYWORDS){ if(g.kws.some(k=>n.includes(k))) return g.cat; }
+  return "alimentacao_nr";
+}
+function parseNFe(html){
+  try{
+    const docp=new DOMParser().parseFromString(html||"","text/html");
+    const num=t=>{ if(!t) return 0; const s=t.replace(/[^0-9.,]/g,"").replace(/\.(?=\d{3}(\D|$))/g,"").replace(",","."); return parseFloat(s)||0; };
+    const itens=[];
+    let rows=docp.querySelectorAll("#tabResult tr");
+    if(!rows.length) rows=docp.querySelectorAll("table tr");
+    rows.forEach(tr=>{
+      const nomeEl=tr.querySelector(".txtTit, .txtTit2");
+      if(!nomeEl) return;
+      const nome=nomeEl.textContent.replace(/\s+/g," ").trim();
+      if(!nome) return;
+      const valorEl=tr.querySelector(".valor");
+      const qtdEl=tr.querySelector(".Rqtd");
+      itens.push({nome, valor:num(valorEl&&valorEl.textContent), qtd:num(qtdEl&&qtdEl.textContent)||1, catId:sugerirCategoria(nome)});
+    });
+    return itens;
+  }catch(e){ return []; }
+}
+function LeitorNFe({allCats,onClose,onImport}){
+  const [aba,setAba]=useState("qr");
+  const [itens,setItens]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [erro,setErro]=useState("");
+
+  const buscarNFe=async(url)=>{
+    setErro(""); setLoading(true);
+    try{
+      const r=await fetch(`/api/nfe?url=${encodeURIComponent(url)}`);
+      const j=await r.json();
+      if(j.error) throw new Error(j.error);
+      const parsed=parseNFe(j.html||"");
+      if(!parsed.length){ setErro("Nenhum item encontrado na nota."); setItens([]); }
+      else setItens(parsed);
+    }catch(e){ setErro("Falha ao buscar a nota: "+e.message); }
+    setLoading(false);
+  };
+
+  // Câmera (aba QR Code)
+  useEffect(()=>{
+    if(aba!=="qr"||itens) return;
+    let ativo=true;
+    const scanner=new Html5Qrcode("nfe-qr-reader");
+    scanner.start({facingMode:"environment"},{fps:10,qrbox:{width:220,height:220}},
+      (decoded)=>{ if(!ativo) return; ativo=false; scanner.stop().catch(()=>{}); buscarNFe(decoded); },
+      ()=>{}
+    ).catch(()=>setErro("Não foi possível acessar a câmera. Use a aba Foto."));
+    return ()=>{ ativo=false; scanner.stop().then(()=>scanner.clear()).catch(()=>{}); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[aba,itens]);
+
+  const handleFoto=async(e)=>{
+    const file=e.target.files&&e.target.files[0];
+    if(!file) return;
+    setErro(""); setLoading(true);
+    try{
+      const h=new Html5Qrcode("nfe-file-reader");
+      const decoded=await h.scanFile(file,false);
+      await buscarNFe(decoded);
+    }catch(err){ setErro("Não foi possível ler o QR Code da foto."); setLoading(false); }
+  };
+
+  const setItemCat=(i,catId)=>setItens(arr=>arr.map((it,j)=>j===i?{...it,catId}:it));
+  const total=(itens||[]).reduce((s,it)=>s+(+it.valor||0),0);
+  const catsDespesa=[...CATS_DESPESA,...allCats.filter(c=>c.custom)];
+
+  return(
+    <Modal title="📷 Ler NF-e" onClose={onClose} maxW={520}>
+      {!itens&&(
+        <>
+          <div style={{display:"flex",gap:6,marginBottom:16,background:"#f3f4f6",borderRadius:12,padding:4}}>
+            {[["qr","🔳 QR Code"],["foto","📸 Foto"]].map(([k,l])=>(
+              <button key={k} type="button" onClick={()=>{setAba(k);setErro("");}} style={{flex:1,padding:"9px 0",borderRadius:9,border:"none",fontFamily:"inherit",fontWeight:700,fontSize:13,cursor:"pointer",background:aba===k?"#fff":"transparent",color:aba===k?"#1f2937":"#6b7280",boxShadow:aba===k?"0 2px 8px rgba(0,0,0,0.08)":"none"}}>{l}</button>
+            ))}
+          </div>
+          {aba==="qr"&&(
+            <div>
+              <div id="nfe-qr-reader" style={{width:"100%",borderRadius:12,overflow:"hidden"}}/>
+              <div style={{fontSize:12,color:"#6b7280",textAlign:"center",marginTop:10}}>Aponte a câmera para o QR Code da nota fiscal.</div>
+            </div>
+          )}
+          {aba==="foto"&&(
+            <div style={{textAlign:"center",padding:"8px 0"}}>
+              <div id="nfe-file-reader" style={{display:"none"}}/>
+              <label style={{display:"inline-block",...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),padding:"13px 22px",cursor:"pointer"}}>
+                📸 Tirar / escolher foto
+                <input type="file" accept="image/*" capture="environment" onChange={handleFoto} style={{display:"none"}}/>
+              </label>
+              <div style={{fontSize:12,color:"#6b7280",marginTop:12}}>Fotografe o QR Code da nota fiscal.</div>
+            </div>
+          )}
+          {loading&&<div style={{textAlign:"center",color:PURPLE,fontWeight:700,marginTop:14}}>Buscando dados da nota…</div>}
+          {erro&&<div style={{background:"#fef2f2",border:"1.5px solid #fecaca",color:"#b91c1c",borderRadius:12,padding:"10px 12px",fontSize:12,marginTop:14}}>{erro}</div>}
+        </>
+      )}
+      {itens&&(
+        <>
+          <div style={{fontSize:13,color:"#374151",fontWeight:700,marginBottom:10}}>{itens.length} item(ns) · Total {fmt(total)}</div>
+          {itens.length===0
+            ? <div style={{textAlign:"center",color:"#9ca3af",padding:"20px 0",fontSize:13}}>Nenhum item reconhecido na nota.</div>
+            : <div style={{maxHeight:"42vh",overflowY:"auto",marginBottom:14}}>
+                {itens.map((it,i)=>(
+                  <div key={i} style={{background:"#f8f9ff",border:"1.5px solid #e0e0f0",borderRadius:12,padding:"10px 12px",marginBottom:8}}>
+                    <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:6}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"#1f2937",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.nome}</div>
+                      <div style={{fontSize:13,fontWeight:900,color:"#ef4444",flexShrink:0}}>{fmt(it.valor)}</div>
+                    </div>
+                    <select value={it.catId} onChange={e=>setItemCat(i,e.target.value)} style={{...S.inp,fontSize:12,padding:"7px 10px"}}>
+                      {catsDespesa.map(c=><option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+          }
+          {itens.length>0&&(
+            <button type="button" onClick={()=>onImport(itens)} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",padding:"13px 0",fontSize:14}}>
+              ✓ Importar {itens.length} lançamento(s)
+            </button>
+          )}
+          <button type="button" onClick={()=>{setItens(null);setErro("");}} style={{...S.btn("#f3f4f6","#374151"),width:"100%",padding:"11px 0",marginTop:8}}>← Ler outra nota</button>
+        </>
+      )}
+    </Modal>
+  );
+}
+
+function LancForm({data,onSave,onClose,allCats,viewMes,viewAno,onImportNFe}){
   const [f,setF]=useState({tipo:"saida",desc:"",valor:"",catId:"",formaPag:"📱 Pix",contaId:"C6",cartao:"C6",membro:MEMBROS[0],mes:viewMes,ano:viewAno,data:todayStr(),status:"confirmado",parcelas:1,irDedutivel:false,irTipo:"",...data});
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
+  const [showNFe,setShowNFe]=useState(false);
   const isCartao=f.tipo==="cartao";
   const isEntrada=f.tipo==="entrada";
   const handleData=v=>{set("data",v);if(v){const d=new Date(v+"T00:00:00");set("mes",d.getMonth());set("ano",d.getFullYear());}};
@@ -894,6 +1045,12 @@ function LancForm({data,onSave,onClose,allCats,viewMes,viewAno}){
   const sugestaoIR=["saude","medicamento","educacao","dizimo"].includes(f.catId);
   return(
     <Modal title={f.id?"Editar Lançamento":"Novo Lançamento"} onClose={onClose}>
+      {!f.id&&(
+        <button type="button" onClick={()=>setShowNFe(true)} style={{width:"100%",marginBottom:16,padding:"12px 0",borderRadius:12,border:`1.5px dashed ${PURPLE}`,background:"#f5f3ff",color:PURPLE,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+          📷 Ler NF-e
+        </button>
+      )}
+      {showNFe&&<LeitorNFe allCats={allCats} onClose={()=>setShowNFe(false)} onImport={items=>{setShowNFe(false);if(onImportNFe) onImportNFe(items);}}/>}
       {/* Tipo */}
       <div style={{display:"flex",gap:6,marginBottom:16,background:"#f3f4f6",borderRadius:12,padding:4}}>
         {[["entrada","↑ Entrada"],["saida","↓ Saída"],["cartao","💳 Cartão"]].map(([k,l])=>(
