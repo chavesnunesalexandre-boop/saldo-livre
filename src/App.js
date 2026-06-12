@@ -509,6 +509,15 @@ function MainApp({familyCode,user,onLogout}){
     toast2(`Convite ${id} gerado!`);
   };
   const cancelarConvite=async(id)=>{ await deleteDoc(doc(db,fp("convites"),String(id))); toast2("Convite cancelado."); };
+  const corrigirVinculos=async(map)=>{
+    const ids=Object.keys(map).filter(id=>map[id]);
+    await Promise.all(ids.map(id=>{
+      const l=lancs.find(x=>x.id===id); if(!l) return Promise.resolve();
+      const patch=l.tipo==="cartao"?{cartao:map[id]}:{contaId:map[id]};
+      return setDoc(doc(db,fp("lancamentos"),id),{...patch,updatedAt:Date.now()},{merge:true});
+    }));
+    toast2(`${ids.length} lançamento(s) corrigido(s)!`); setModal(null);
+  };
   const confirmarPendente=async(p,valorReal)=>{
     const tm=BASE_TIPOS[p.baseTipo]||BASE_TIPOS.despesa_fixa;
     const entry={
@@ -602,6 +611,7 @@ function MainApp({familyCode,user,onLogout}){
   });
   const totalDividas=dividasCartoes.reduce((s,d)=>s+d.divida,0);
   const saldoLivre=totalContas-totalDividas;
+  const lancsSemVinculo=lancs.filter(l=>(l.tipo==="cartao"&&!l.cartao)||((l.tipo==="entrada"||l.tipo==="saida")&&!l.contaId));
 
   const totalInvestido=investimentos.reduce((s,i)=>s+(+i.saldoAtual||0),0);
 
@@ -676,6 +686,7 @@ function MainApp({familyCode,user,onLogout}){
       {modal?.tipo==="relatorioIR"&&<RelatorioIR lancs={lancs} onClose={()=>setModal(null)}/>}
       {consultorOpen&&<ConsultorFinanceiro analises={analises} atualId={`${viewMes}-${viewAno}`} mesLabel={`${MESES[viewMes]} ${viewAno}`} loading={consultorLoading} erro={consultorErro} onGerar={()=>gerarAnalise(viewMes,viewAno)} onClose={()=>setConsultorOpen(false)}/>}
       {modal?.tipo==="reset"&&<ResetModal onConfirm={resetarDados} onClose={()=>setModal(null)}/>}
+      {modal?.tipo==="corrigirVinculo"&&<CorrigirVinculoModal lancs={lancsSemVinculo} contas={contasComSaldo} cartoesNomes={nomesCartoes} onSave={corrigirVinculos} onClose={()=>setModal(null)}/>}
       {modal?.tipo==="importarExtrato"&&<ImportarExtrato contexto={modal.data.contexto} membros={nomesMembros} onImport={importarLancamentos} onClose={()=>setModal(null)} viewMes={viewMes} viewAno={viewAno} contas={contasComSaldo} cartoesNomes={nomesCartoes}/>}
 
       {/* INÍCIO */}
@@ -850,7 +861,7 @@ function MainApp({familyCode,user,onLogout}){
 
       {/* CONFIGURAÇÕES */}
       {tab==="config"&&(
-        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} membros={membros} onAddMembro={saveMembro} onDelMembro={deleteMembro} config={config} onSaveConfig={saveConfigFin} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout} onReset={()=>setModal({tipo:"reset"})} onLimparDup={limparDuplicatas} convites={convites} onConvidar={criarConvite} onCancelarConvite={cancelarConvite} contas={contasComSaldo} cartoes={cartoes} onSaveConta={saveConta} onDeleteConta={deleteConta} onSaveCartao={saveCartao} onDeleteCartao={deleteCartao} onSaveCategoria={saveCategoria} onDeleteCategoria={deleteCategoria} onRelatorioIR={()=>setModal({tipo:"relatorioIR",data:{}})}/>
+        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} membros={membros} onAddMembro={saveMembro} onDelMembro={deleteMembro} config={config} onSaveConfig={saveConfigFin} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout} onReset={()=>setModal({tipo:"reset"})} onLimparDup={limparDuplicatas} convites={convites} onConvidar={criarConvite} onCancelarConvite={cancelarConvite} contas={contasComSaldo} cartoes={cartoes} onSaveConta={saveConta} onDeleteConta={deleteConta} onSaveCartao={saveCartao} onDeleteCartao={deleteCartao} onSaveCategoria={saveCategoria} onDeleteCategoria={deleteCategoria} onRelatorioIR={()=>setModal({tipo:"relatorioIR",data:{}})} semVinculo={lancsSemVinculo.length} onCorrigirVinculo={()=>setModal({tipo:"corrigirVinculo"})}/>
       )}
 
       {/* FAB */}
@@ -1617,7 +1628,6 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
   const [progresso,setProgresso]=useState("");
   const [erro,setErro]=useState("");
   const [resultado,setResultado]=useState(false);
-  const [bancoDetectado,setBancoDetectado]=useState("");
   const [periodo,setPeriodo]=useState("");
   const [descartados,setDescartados]=useState(0);
   const [itens,setItens]=useState([]);
@@ -1651,6 +1661,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
             parcela:it.parcela||null, titular:it.titular||null,
             catId:CAT_IDS_VALIDAS.has(it.categoria)?it.categoria:(inflow?"":sugerirCategoria(it.desc)),
             membro:membros[0]||"",
+            vinculo:banco, // conta(id) ou cartão(nome) — herda do cabeçalho, editável por item
             cartaoFatura:pag?(detectarBanco(it.desc,cartoesNomes)||cartoesNomes[0]||""):null,
           };
           novo.dup=ehDuplicata(novo,acc);
@@ -1659,7 +1670,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
         });
       }
       acc.forEach((it,i)=>{it._i=i;});
-      setItens(acc); setBancoDetectado(bDet); setPeriodo(per); setDescartados(total-acc.length); setResultado(true);
+      setItens(acc); setPeriodo(per); setDescartados(total-acc.length); setResultado(true);
       if(!banco){
         if(isCartao){ const m=detectarBanco(bDet,cartoesNomes); if(m) setBanco(m); }
         else { const m=detectarBanco(bDet,contas.map(c=>c.nome)); const ct=contas.find(c=>c.nome===m); if(ct) setBanco(ct.id); }
@@ -1678,9 +1689,10 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
     const arr=[]; const faturasPagas=[]; let entradas=0,saidas=0;
     selecionados.forEach(it=>{
       const v=Math.abs(+it.valor||0); const mem=it.membro||membros[0]||"";
+      const vinc=it.vinculo||banco;
       if(isCartao){
         const est=it.tipo==="estorno";
-        arr.push({ tipo:"cartao", desc:it.desc, valor:est?-v:v, catId:it.catId, subId:it.subId||"", membro:mem, cartao:banco, parcela:it.parcela||null, mes:+mes, ano:+ano, mesFatura:+mes, anoFatura:+ano, parcelas:1, status:"confirmado", origem:"extrato", data:todayStr() });
+        arr.push({ tipo:"cartao", desc:it.desc, valor:est?-v:v, catId:it.catId, subId:it.subId||"", membro:mem, cartao:vinc, parcela:it.parcela||null, mes:+mes, ano:+ano, mesFatura:+mes, anoFatura:+ano, parcelas:1, status:"confirmado", origem:"extrato", data:todayStr() });
         // Parcela X/Y detectada e não é a última: cria as parcelas futuras nas faturas seguintes
         const pm=String(it.parcela||"").match(/(\d+)\s*\/\s*(\d+)/);
         if(!est&&pm&&+pm[1]<+pm[2]){
@@ -1688,17 +1700,17 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
           const baseDesc=it.desc.replace(/\(?\s*\d+\s*\/\s*\d+\s*\)?\s*$/,"").trim()||it.desc;
           for(let i=1;i<=y-x;i++){
             const r=addM(+mes,+ano,i);
-            arr.push({ tipo:"cartao", desc:`${baseDesc} (${x+i}/${y})`, valor:v, catId:it.catId, membro:mem, cartao:banco, parcela:`${x+i}/${y}`, mes:r.mes, ano:r.ano, mesFatura:r.mes, anoFatura:r.ano, parcelas:1, status:"confirmado", origem:"extrato_parcela", data:todayStr() });
+            arr.push({ tipo:"cartao", desc:`${baseDesc} (${x+i}/${y})`, valor:v, catId:it.catId, membro:mem, cartao:vinc, parcela:`${x+i}/${y}`, mes:r.mes, ano:r.ano, mesFatura:r.mes, anoFatura:r.ano, parcelas:1, status:"confirmado", origem:"extrato_parcela", data:todayStr() });
           }
         }
       } else if(it.tipo==="pagamento_fatura"){
         saidas+=v;
-        arr.push({ tipo:"saida", desc:it.desc, valor:v, catId:it.catId||"outras", membro:mem, contaId:banco, formaPag:"Pagamento fatura", mes:+mes, ano:+ano, data:todayStr(), status:"confirmado", origem:"extrato", pagamentoFatura:true, cartaoFatura:it.cartaoFatura||null });
+        arr.push({ tipo:"saida", desc:it.desc, valor:v, catId:it.catId||"outras", membro:mem, contaId:vinc, formaPag:"Pagamento fatura", mes:+mes, ano:+ano, data:todayStr(), status:"confirmado", origem:"extrato", pagamentoFatura:true, cartaoFatura:it.cartaoFatura||null });
         if(it.cartaoFatura) faturasPagas.push({cartao:it.cartaoFatura,mes:+mes,ano:+ano,valor:v});
       } else {
         const t=it.tipo==="entrada"?"entrada":"saida";
         if(t==="entrada") entradas+=v; else saidas+=v;
-        arr.push({ tipo:t, desc:it.desc, valor:v, catId:it.catId, membro:mem, contaId:banco, formaPag:"Extrato", mes:+mes, ano:+ano, data:todayStr(), status:"confirmado", origem:"extrato" });
+        arr.push({ tipo:t, desc:it.desc, valor:v, catId:it.catId, membro:mem, contaId:vinc, formaPag:"Extrato", mes:+mes, ano:+ano, data:todayStr(), status:"confirmado", origem:"extrato" });
       }
     });
     if(!arr.length) return;
@@ -1727,7 +1739,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
             <div style={{textAlign:"center",color:"#9ca3af",fontSize:12,padding:"18px 0"}}>Selecione o tipo e o {isCartao?"cartão":"banco"} para continuar.</div>
           ):(
             <>
-              <div style={{border:"2px dashed #c7d2fe",borderRadius:16,padding:files.length?12:"24px 16px",textAlign:"center",background:"#f8f9ff",margin:"4px 0 12px"}}>
+              <div style={{border:"2px dashed #e5e7eb",borderRadius:16,padding:files.length?12:"24px 16px",textAlign:"center",background:"#f8f9fa",margin:"4px 0 12px"}}>
                 {files.length>0&&(
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center",marginBottom:12}}>
                     {files.slice(0,8).map((f,i)=><img key={i} src={URL.createObjectURL(f)} alt="" style={{width:52,height:52,objectFit:"cover",borderRadius:8}}/>)}
@@ -1747,10 +1759,10 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
         </>
       ):(
         <>
-          <div style={{background:"#f8f9ff",border:"1.5px solid #e0e0f0",borderRadius:12,padding:"10px 12px",marginBottom:12}}>
-            <div style={{fontSize:11,color:"#6b7280",marginBottom:8,fontWeight:600}}>🏦 {bancoDetectado||banco}{periodo?` · ${periodo}`:""}</div>
+          <div style={{background:"#f8f9fa",border:"1px solid #e5e7eb",borderRadius:12,padding:"10px 12px",marginBottom:12}}>
+            <div style={{fontSize:12,color:"#1a1a1a",marginBottom:8,fontWeight:700}}>Importando para: {isCartao?`💳 ${banco}`:`🏦 ${(contas.find(c=>c.id===banco)||{}).nome||banco}`}{periodo?<span style={{color:"#9ca3af",fontWeight:600}}> · {periodo}</span>:null}</div>
             <div style={{display:"flex",gap:8}}>
-              <select value={banco} onChange={e=>setBanco(e.target.value)} style={{...S.inp,fontSize:12,flex:1}}>{isCartao?cartoesNomes.map(b=><option key={b} value={b}>{b}</option>):contas.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+              <select value={banco} onChange={e=>{const v=e.target.value;setBanco(v);setItens(arr=>arr.map(it=>({...it,vinculo:v})));}} style={{...S.inp,fontSize:12,flex:1}}>{isCartao?cartoesNomes.map(b=><option key={b} value={b}>{b}</option>):contas.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select>
               <select value={mes} onChange={e=>setMes(+e.target.value)} style={{...S.inp,fontSize:12,width:118}}>{MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}</select>
               <input value={ano} onChange={e=>setAno(+e.target.value)} type="number" style={{...S.inp,fontSize:12,width:76}}/>
             </div>
@@ -1782,14 +1794,17 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
                     {it.dup&&<span style={{fontSize:10,fontWeight:800,color:"#b45309",background:"#fef3c7",borderRadius:6,padding:"1px 6px"}}>⚠️ Possível duplicata</span>}
                     {it.titular&&<span style={{fontSize:10,color:"#9ca3af"}}>· {it.titular}</span>}
                   </div>
-                  <div style={{display:"flex",gap:6,paddingLeft:24}}>
+                  <div style={{display:"flex",gap:6,paddingLeft:24,flexWrap:"wrap"}}>
+                    <select value={it.vinculo||banco} onChange={e=>upd(it._i,"vinculo",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:"1 1 46%"}}>
+                      {isCartao?cartoesNomes.map(c=><option key={c} value={c}>💳 {c}</option>):contas.map(c=><option key={c.id} value={c.id}>🏦 {c.nome}</option>)}
+                    </select>
                     {pag
-                      ? <select value={it.cartaoFatura||cartoesNomes[0]||""} onChange={e=>upd(it._i,"cartaoFatura",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:1}}>{cartoesNomes.map(c=><option key={c}>{c}</option>)}</select>
-                      : <select value={it.catId} onChange={e=>upd(it._i,"catId",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:1}}>
+                      ? <select value={it.cartaoFatura||cartoesNomes[0]||""} onChange={e=>upd(it._i,"cartaoFatura",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:"1 1 46%"}}><option value="">Fatura de…</option>{cartoesNomes.map(c=><option key={c}>{c}</option>)}</select>
+                      : <select value={it.catId} onChange={e=>upd(it._i,"catId",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:"1 1 46%"}}>
                           <option value="">— Categoria —</option>
                           {cats.map(c=><option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
                         </select>}
-                    <select value={it.membro} onChange={e=>upd(it._i,"membro",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,width:108}}>
+                    <select value={it.membro} onChange={e=>upd(it._i,"membro",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:"1 1 100%"}}>
                       {membros.length?membros.map(m=><option key={m}>{m}</option>):<option value="">—</option>}
                     </select>
                   </div>
@@ -1804,6 +1819,44 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
           <button onClick={()=>{setResultado(false);setItens([]);setFiles([]);setErro("");}} style={{...S.btn("#f3f4f6","#374151"),width:"100%",padding:"11px 0",marginTop:8}}>← Novas imagens</button>
         </>
       )}
+    </Modal>
+  );
+}
+
+// ─── Corrigir lançamentos sem conta/cartão ───────────────────────────────────
+function CorrigirVinculoModal({lancs=[],contas=[],cartoesNomes=[],onSave,onClose}){
+  const [map,setMap]=useState({});
+  const setV=(id,v)=>setMap(p=>({...p,[id]:v}));
+  const preenchidos=Object.values(map).filter(Boolean).length;
+  return(
+    <Modal title="🔧 Corrigir vínculos" onClose={onClose} maxW={520}>
+      {lancs.length===0
+        ? <div style={{textAlign:"center",color:"#10b981",padding:"24px 0",fontSize:14,fontWeight:700}}>✓ Nenhum lançamento sem conta/cartão!</div>
+        : <>
+          <div style={{fontSize:12,color:"#6b7280",marginBottom:12}}>{lancs.length} lançamento(s) sem vínculo. Selecione a conta ou cartão de cada um.</div>
+          <div style={{maxHeight:"54vh",overflowY:"auto",marginBottom:14}}>
+            {lancs.map(l=>{
+              const isCartao=l.tipo==="cartao";
+              return(
+                <div key={l.id} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:"10px 12px",marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:6}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#1a1a1a",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.desc}</div>
+                    <div style={{fontSize:12,fontWeight:800,color:l.tipo==="entrada"?"#10b981":isCartao?"#1a1a1a":"#ef4444"}}>{fmt(l.valor)}</div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:10,color:"#9ca3af",fontWeight:700,whiteSpace:"nowrap"}}>{isCartao?"💳 Cartão":(l.tipo==="entrada"?"🏦 Entrou":"🏦 Saiu")} · {MESES[l.mes]}/{l.ano}</span>
+                    <select value={map[l.id]||""} onChange={e=>setV(l.id,e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:1}}>
+                      <option value="">— Selecione —</option>
+                      {isCartao?cartoesNomes.map(c=><option key={c} value={c}>{c}</option>):contas.map(c=><option key={c.id} value={c.id}>{c.tipo==="carteira"?"👛 ":"🏦 "}{c.nome}</option>)}
+                    </select>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <button onClick={()=>onSave(map)} disabled={!preenchidos} style={{...S.btn(PURPLE),width:"100%",padding:"13px 0",fontSize:14,opacity:preenchidos?1:.5}}>✓ Salvar {preenchidos} vínculo(s)</button>
+        </>
+      }
     </Modal>
   );
 }
@@ -2117,7 +2170,7 @@ function CategoriasSection({customCats=[],onSave,onDelete}){
 }
 
 // ─── Tab Perfil ───────────────────────────────────────────────────────────────
-function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,onDelMembro,config={},onSaveConfig,onAdd,onEdit,onDelete,onLogout,onReset,onLimparDup,convites=[],onConvidar,onCancelarConvite,contas=[],cartoes=[],onSaveConta,onDeleteConta,onSaveCartao,onDeleteCartao,onSaveCategoria,onDeleteCategoria,onRelatorioIR}){
+function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,onDelMembro,config={},onSaveConfig,onAdd,onEdit,onDelete,onLogout,onReset,onLimparDup,convites=[],onConvidar,onCancelarConvite,contas=[],cartoes=[],onSaveConta,onDeleteConta,onSaveCartao,onDeleteCartao,onSaveCategoria,onDeleteCategoria,onRelatorioIR,semVinculo=0,onCorrigirVinculo}){
   const [novoMembro,setNovoMembro]=useState("");
   const [copiado,setCopiado]=useState("");
   const addM2=()=>{ const n=novoMembro.trim(); if(!n) return; onAddMembro&&onAddMembro(n); setNovoMembro(""); };
@@ -2222,7 +2275,8 @@ function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,
         {/* Manutenção */}
         <div style={{marginBottom:18}}>
           <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:8}}>🧹 Manutenção</div>
-          <button onClick={onLimparDup} style={{width:"100%",background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:12,padding:"12px 0",color:"#2563eb",fontWeight:800,fontSize:13,cursor:"pointer"}}>🧹 Limpar duplicatas</button>
+          <button onClick={onCorrigirVinculo} style={{width:"100%",background:"#fff",border:`1px solid ${semVinculo>0?"#1a1a1a":"#e5e7eb"}`,borderRadius:10,padding:"12px 0",color:"#1a1a1a",fontWeight:800,fontSize:13,cursor:"pointer",marginBottom:8}}>🔧 Corrigir lançamentos sem conta/cartão{semVinculo>0?` (${semVinculo})`:""}</button>
+          <button onClick={onLimparDup} style={{width:"100%",background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:"12px 0",color:"#1a1a1a",fontWeight:800,fontSize:13,cursor:"pointer"}}>🧹 Limpar duplicatas</button>
           <div style={{fontSize:11,color:"#9ca3af",marginTop:6}}>Remove lançamentos repetidos (mesma data, valor e descrição), mantendo o mais antigo de cada grupo.</div>
         </div>
 
