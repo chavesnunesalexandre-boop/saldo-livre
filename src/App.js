@@ -50,6 +50,9 @@ const addM = (m,a,n=1) => { let nm=m+n; return {mes:((nm%12)+12)%12, ano:a+Math.
 const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const famPath = (fc,col) => `familias/${fc}/${col}`;
 const cmpMonth = (m1,a1,m2,a2) => a1*12+m1-(a2*12+m2);
+// Gera código de convite de 8 caracteres (sem caracteres ambíguos 0/O/1/I)
+function gerarCodigoConvite(){ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let s=""; for(let i=0;i<8;i++) s+=chars[Math.floor(Math.random()*chars.length)]; return s; }
+const CONVITE_TTL=24*60*60*1000; // 24h
 
 // ─── Cadastro Base ────────────────────────────────────────────────────────────
 const BASE_TIPOS = {
@@ -149,6 +152,7 @@ function LoginScreen({onLogin,existingUser}){
   const [email,setEmail]=useState("");
   const [senha,setSenha]=useState("");
   const [code,setCode]=useState("");
+  const [conviteCode,setConviteCode]=useState("");
   const [modoFam,setModoFam]=useState("entrar");
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState("");
@@ -182,6 +186,15 @@ function LoginScreen({onLogin,existingUser}){
         await setDoc(ref,{criadoEm:Date.now(),criadoPor:user.uid});
       } else {
         if(!snap.exists()){setErr("Código não encontrado.");setLoading(false);return;}
+        // Entrar em família existente exige convite válido (24h, uso único)
+        const conv=conviteCode.trim().toUpperCase().replace(/[^A-Z0-9]/g,"");
+        if(!conv){setErr("Informe o código de convite.");setLoading(false);return;}
+        const cref=doc(db,`familias/${c}/convites/${conv}`);
+        const csnap=await getDoc(cref);
+        if(!csnap.exists()||csnap.data().usado===true||Date.now()>(csnap.data().expiraEm||0)){
+          setErr("Convite inválido ou expirado.");setLoading(false);return;
+        }
+        await setDoc(cref,{usado:true,usadoEm:Date.now(),usadoPor:user.uid},{merge:true});
       }
       localStorage.setItem("sl2_family",c);
       onLogin(user,c);
@@ -232,6 +245,12 @@ function LoginScreen({onLogin,existingUser}){
             <Field label={modoFam==="criar"?"Crie um código para sua família":"Código da família"}>
               <input value={code} onChange={e=>setCode(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleFamilia()} placeholder={modoFam==="criar"?"Ex: familia-nunes-2026":"Código fornecido pelo responsável"} style={S.inp}/>
             </Field>
+            {modoFam==="entrar"&&(
+              <Field label="Código de convite (8 caracteres)">
+                <input value={conviteCode} onChange={e=>setConviteCode(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleFamilia()} placeholder="Ex: ABC12345" maxLength={8} style={{...S.inp,textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700}}/>
+              </Field>
+            )}
+            {modoFam==="entrar"&&<div style={{fontSize:11,color:"#9ca3af",marginTop:-4,marginBottom:4}}>Peça um convite ao responsável pela família (válido 24h, uso único).</div>}
             {err&&<div style={{fontSize:12,color:"#ef4444",marginTop:8,background:"#fef2f2",borderRadius:8,padding:"8px 12px"}}>{err}</div>}
             <button onClick={handleFamilia} disabled={loading} style={{...S.btn(`linear-gradient(135deg,${PURPLE},#a78bfa)`),width:"100%",marginTop:16,padding:"13px 0",opacity:loading?.7:1}}>
               {loading?"Aguarde...":(modoFam==="criar"?"Criar família":"Entrar")}
@@ -381,6 +400,7 @@ function MainApp({familyCode,user,onLogout}){
   const [membros,setMembros]=useState([]);
   const [config,setConfig]=useState({});
   const [analises,setAnalises]=useState([]);
+  const [convites,setConvites]=useState([]);
   const [consultorOpen,setConsultorOpen]=useState(false);
   const [consultorLoading,setConsultorLoading]=useState(false);
   const [consultorErro,setConsultorErro]=useState("");
@@ -407,6 +427,7 @@ function MainApp({familyCode,user,onLogout}){
       onSnapshot(collection(db,fp("membros")),s=>setMembros(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.nome||"").localeCompare(b.nome||"")))),
       onSnapshot(doc(db,"familias",familyCode),s=>setConfig(s.data()||{})),
       onSnapshot(collection(db,fp("analises")),s=>setAnalises(s.docs.map(d=>({id:d.id,...d.data()})))),
+      onSnapshot(collection(db,fp("convites")),s=>setConvites(s.docs.map(d=>({id:d.id,...d.data()})))),
     ];
     setLoading(false);
     return()=>unsubs.forEach(u=>u());
@@ -481,6 +502,13 @@ function MainApp({familyCode,user,onLogout}){
     await Promise.all(toDel.map(id=>deleteDoc(doc(db,fp("lancamentos"),id))));
     toast2(`${toDel.length} duplicata(s) removida(s)`);
   };
+  const criarConvite=async()=>{
+    const id=gerarCodigoConvite();
+    const agora=Date.now();
+    await setDoc(doc(db,fp("convites"),id),{criadoEm:agora,expiraEm:agora+CONVITE_TTL,usado:false,criadoPor:user.uid});
+    toast2(`Convite ${id} gerado!`);
+  };
+  const cancelarConvite=async(id)=>{ await deleteDoc(doc(db,fp("convites"),String(id))); toast2("Convite cancelado."); };
   const confirmarPendente=async(p,valorReal)=>{
     const tm=BASE_TIPOS[p.baseTipo]||BASE_TIPOS.despesa_fixa;
     const entry={
@@ -796,7 +824,7 @@ function MainApp({familyCode,user,onLogout}){
 
       {/* CONFIGURAÇÕES */}
       {tab==="config"&&(
-        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} membros={membros} onAddMembro={saveMembro} onDelMembro={deleteMembro} config={config} onSaveConfig={saveConfigFin} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout} onReset={()=>setModal({tipo:"reset"})} onLimparDup={limparDuplicatas}/>
+        <TabConfig baseItems={baseItems} customCats={customCats} user={user} familyCode={familyCode} membros={membros} onAddMembro={saveMembro} onDelMembro={deleteMembro} config={config} onSaveConfig={saveConfigFin} onAdd={tipo=>setModal({tipo:"base",data:{tipo}})} onEdit={b=>setModal({tipo:"base",data:{...b}})} onDelete={deleteBase} onLogout={onLogout} onReset={()=>setModal({tipo:"reset"})} onLimparDup={limparDuplicatas} convites={convites} onConvidar={criarConvite} onCancelarConvite={cancelarConvite}/>
       )}
 
       {/* FAB */}
@@ -1892,9 +1920,12 @@ function ConfigFinanceira({config,onSave}){
 }
 
 // ─── Tab Configurações ────────────────────────────────────────────────────────
-function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,onDelMembro,config={},onSaveConfig,onAdd,onEdit,onDelete,onLogout,onReset,onLimparDup}){
+function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,onDelMembro,config={},onSaveConfig,onAdd,onEdit,onDelete,onLogout,onReset,onLimparDup,convites=[],onConvidar,onCancelarConvite}){
   const [novoMembro,setNovoMembro]=useState("");
+  const [copiado,setCopiado]=useState("");
   const addM2=()=>{ const n=novoMembro.trim(); if(!n) return; onAddMembro&&onAddMembro(n); setNovoMembro(""); };
+  const convitesPendentes=[...convites].filter(c=>!c.usado&&(c.expiraEm||0)>Date.now()).sort((a,b)=>(b.criadoEm||0)-(a.criadoEm||0));
+  const copiarConvite=(t)=>{ try{ navigator.clipboard&&navigator.clipboard.writeText(t); }catch(e){} setCopiado(t); setTimeout(()=>setCopiado(""),1600); };
   return(
     <div>
       <div style={{background:"linear-gradient(135deg,#475569,#94a3b8)",padding:"20px 20px 28px",borderRadius:"0 0 28px 28px"}}>
@@ -1920,7 +1951,22 @@ function TabConfig({baseItems,customCats,user,familyCode,membros=[],onAddMembro,
               </div>
             ))}</div>
         }
-        <div style={{height:1,background:"#f0f0f5",marginBottom:16}}/>
+        {/* Convites */}
+        <button onClick={onConvidar} style={{width:"100%",background:"#eef2ff",border:`1.5px solid ${PURPLE}40`,borderRadius:12,padding:"11px 0",color:PURPLE,fontWeight:800,fontSize:13,cursor:"pointer",marginBottom:10}}>➕ Convidar pessoa</button>
+        {convitesPendentes.map(cv=>{
+          const horas=Math.max(0,Math.ceil((cv.expiraEm-Date.now())/3600000));
+          return(
+            <div key={cv.id} style={{display:"flex",alignItems:"center",gap:8,background:"#faf5ff",border:"1.5px solid #ede9fe",borderRadius:10,padding:"8px 12px",marginBottom:6}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:17,fontWeight:900,letterSpacing:"0.12em",color:PURPLE,fontFamily:"monospace"}}>{cv.id}</div>
+                <div style={{fontSize:10,color:"#9ca3af"}}>Expira em ~{horas}h · uso único</div>
+              </div>
+              <button onClick={()=>copiarConvite(cv.id)} style={{background:"#fff",border:"1.5px solid #e0e0f0",borderRadius:8,padding:"5px 9px",cursor:"pointer",fontSize:11,color:PURPLE,fontWeight:700,whiteSpace:"nowrap"}}>{copiado===cv.id?"✓ Copiado":"📋 Copiar"}</button>
+              <button onClick={()=>onCancelarConvite&&onCancelarConvite(cv.id)} style={{background:"#fef2f2",border:"none",borderRadius:8,color:"#ef4444",padding:"5px 7px",cursor:"pointer",fontSize:11}}>✕</button>
+            </div>
+          );
+        })}
+        <div style={{height:1,background:"#f0f0f5",margin:"12px 0 16px"}}/>
 
         {/* Cadastro Base */}
         <div style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:4}}>📦 Cadastro Base</div>
