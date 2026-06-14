@@ -567,6 +567,18 @@ function MainApp({familyCode,user,onLogout}){
     await setDoc(doc(db,fp("lancamentos"),id+"_e"),{tipo:"entrada",desc:desc||`Transferência ← ${contaOrigem}`,valor:+valor,contaId:contaDestino,formaPag:"TED/DOC",catId:"outras_rec",mes:+mes,ano:+ano,data:dt,membro:nomesMembros[0]||"",status:"confirmado",transfId:id,updatedAt:Date.now()});
     toast2("Transferência registrada!"); setModal(null);
   };
+  const pagarFatura=async(cartao,contaId,valor)=>{
+    if(!cartao||!contaId){ toast2("Selecione cartão e conta.",false); return; }
+    const naoPagos=lancs.filter(l=>l.tipo==="cartao"&&(l.cartao||"")===cartao&&l.status!=="pago");
+    const total=naoPagos.reduce((s,l)=>s+(+l.valor||0),0);
+    const v=+valor>0?+valor:total;
+    const id=String(Date.now());
+    // Debita a conta (lançamento de saída) — o saldo é derivado dos lançamentos
+    await setDoc(doc(db,fp("lancamentos"),id),{tipo:"saida",desc:`Pagamento fatura ${cartao}`,valor:v,contaId,formaPag:"Pagamento fatura",catId:"outras",mes:viewMes,ano:viewAno,data:todayStr(),membro:nomesMembros[0]||"",status:"confirmado",pagamentoFatura:true,cartaoFatura:cartao,updatedAt:Date.now()});
+    // Marca os lançamentos do cartão como pagos → saem da dívida
+    await Promise.all(naoPagos.map(l=>setDoc(doc(db,fp("lancamentos"),l.id),{status:"pago",pagoEm:Date.now(),pagoConta:contaId},{merge:true})));
+    toast2(`Fatura ${cartao} paga!`); setModal(null);
+  };
   const saveInvest=async(data)=>{
     const {id,...rest}=data;
     await setDoc(doc(db,fp("investimentos"),id||String(Date.now())),{...rest,valor:+rest.valor||0});
@@ -607,12 +619,16 @@ function MainApp({familyCode,user,onLogout}){
   const cartoesDerivados=[...new Set(lancs.filter(l=>l.tipo==="cartao"&&l.cartao).map(l=>l.cartao))];
   const nomesCartoes=cartoes.length?cartoes.map(c=>c.nome||c.id):(cartoesDerivados.length?cartoesDerivados:CARTOES_FIXOS);
   const dividasCartoes=nomesCartoes.map(n=>{
-    const compras=lancs.filter(l=>l.tipo==="cartao"&&(l.cartao||"")===n).reduce((s,l)=>s+(+l.valor||0),0);
-    const pagos=lancs.filter(l=>l.tipo==="saida"&&l.pagamentoFatura&&l.cartaoFatura===n&&l.status==="confirmado").reduce((s,l)=>s+(+l.valor||0),0);
-    return {nome:n,divida:Math.max(0,compras-pagos)};
+    const divida=lancs.filter(l=>l.tipo==="cartao"&&(l.cartao||"")===n&&l.status!=="pago").reduce((s,l)=>s+(+l.valor||0),0);
+    return {nome:n,divida:Math.max(0,divida)};
   });
   const totalDividas=dividasCartoes.reduce((s,d)=>s+d.divida,0);
   const saldoLivre=totalContas-totalDividas;
+  // Faturas não pagas por mês de vencimento
+  const faturaDoMes=(m,a)=>lancs.filter(l=>l.tipo==="cartao"&&l.status!=="pago"&&l.mesFatura===m&&l.anoFatura===a).reduce((s,l)=>s+(+l.valor||0),0);
+  const faturaEsteMes=faturaDoMes(viewMes,viewAno);
+  const _prox=addM(viewMes,viewAno,1);
+  const faturaProxMes=faturaDoMes(_prox.mes,_prox.ano);
   const lancsSemVinculo=lancs.filter(l=>(l.tipo==="cartao"&&!l.cartao)||((l.tipo==="entrada"||l.tipo==="saida")&&!l.contaId));
 
   const totalInvestido=investimentos.reduce((s,i)=>s+(+i.saldoAtual||0),0);
@@ -690,6 +706,7 @@ function MainApp({familyCode,user,onLogout}){
       {modal?.tipo==="reset"&&<ResetModal onConfirm={resetarDados} onClose={()=>setModal(null)}/>}
       {modal?.tipo==="corrigirVinculo"&&<CorrigirVinculoModal lancs={lancsSemVinculo} contas={contasComSaldo} cartoesNomes={nomesCartoes} onSave={corrigirVinculos} onClose={()=>setModal(null)}/>}
       {modal?.tipo==="importarExtrato"&&<ImportarExtrato contexto={modal.data.contexto} membros={nomesMembros} onImport={importarLancamentos} onClose={()=>setModal(null)} viewMes={viewMes} viewAno={viewAno} contas={contasComSaldo} cartoesNomes={nomesCartoes}/>}
+      {modal?.tipo==="pagarFatura"&&<PagarFaturaModal cartao={modal.data.cartao} contas={contasComSaldo} cartoesNomes={nomesCartoes} dividas={dividasCartoes} onConfirm={pagarFatura} onClose={()=>setModal(null)}/>}
 
       {/* INÍCIO */}
       {tab==="inicio"&&(
@@ -724,6 +741,12 @@ function MainApp({familyCode,user,onLogout}){
           </div>
 
           <div style={{padding:"0 16px"}}>
+            {/* Composição do Saldo Livre */}
+            <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:16,padding:"14px 16px",marginTop:12,marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span style={{color:"#6b7280"}}>Total em contas</span><span style={{fontWeight:800,color:"#1a1a1a"}}>{fmt(totalContas)}</span></div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:8}}><span style={{color:"#6b7280"}}>(−) Dívida cartões</span><span style={{fontWeight:800,color:"#ef4444"}}>{fmt(totalDividas)}</span></div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:14,borderTop:"1px solid #e5e7eb",paddingTop:8}}><span style={{fontWeight:800,color:"#1a1a1a"}}>(=) Saldo Livre</span><span style={{fontWeight:900,color:saldoLivre>=0?"#10b981":"#ef4444"}}>{fmt(saldoLivre)}</span></div>
+            </div>
             {/* Cards rápidos */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:12,marginBottom:20}}>
               {[
@@ -739,6 +762,20 @@ function MainApp({familyCode,user,onLogout}){
                 </div>
               ))}
             </div>
+
+            {/* Faturas: vence este mês vs próximo */}
+            {totalDividas>0&&(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+                <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:16,padding:"12px 14px"}}>
+                  <div style={{fontSize:10,color:"#9ca3af",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:3}}>💳 Fatura {MESES[viewMes]}</div>
+                  <div style={{fontSize:16,fontWeight:900,color:"#1a1a1a"}}>{fmt(faturaEsteMes)}</div>
+                </div>
+                <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:16,padding:"12px 14px"}}>
+                  <div style={{fontSize:10,color:"#9ca3af",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:3}}>💳 Próximo mês</div>
+                  <div style={{fontSize:16,fontWeight:900,color:"#6b7280"}}>{fmt(faturaProxMes)}</div>
+                </div>
+              </div>
+            )}
 
             {/* Previstas pendentes */}
             {previstasPendentes.length>0&&(
@@ -848,12 +885,12 @@ function MainApp({familyCode,user,onLogout}){
 
       {/* CARTÕES */}
       {tab==="cartoes"&&(
-        <TabCartoes lancs={lancs} viewMes={viewMes} viewAno={viewAno} setViewMes={setViewMes} setViewAno={setViewAno} customCats={customCats} allCats={allCats} onEdit={l=>setModal({tipo:"lancamento",data:{...l,tipo:"cartao"}})} onDelete={deleteLanc} onNovaCompra={()=>setModal({tipo:"lancamento",data:{tipo:"cartao",mes:viewMes,ano:viewAno}})} onImportar={()=>setModal({tipo:"importarExtrato",data:{contexto:"cartao"}})} cartoesNomes={nomesCartoes} dividas={dividasCartoes}/>
+        <TabCartoes lancs={lancs} viewMes={viewMes} viewAno={viewAno} setViewMes={setViewMes} setViewAno={setViewAno} customCats={customCats} allCats={allCats} onEdit={l=>setModal({tipo:"lancamento",data:{...l,tipo:"cartao"}})} onDelete={deleteLanc} onNovaCompra={()=>setModal({tipo:"lancamento",data:{tipo:"cartao",mes:viewMes,ano:viewAno}})} onImportar={()=>setModal({tipo:"importarExtrato",data:{contexto:"cartao"}})} cartoesNomes={nomesCartoes} dividas={dividasCartoes} onPagarFatura={(c)=>setModal({tipo:"pagarFatura",data:{cartao:c}})}/>
       )}
 
       {/* CONTAS */}
       {tab==="contas"&&(
-        <TabContas contas={contasComSaldo} lancs={lancs} viewMes={viewMes} viewAno={viewAno} setViewMes={setViewMes} setViewAno={setViewAno} onSaldoInicial={saveSaldoInicial} onTransferencia={()=>setModal({tipo:"transferencia",data:{}})} onPagarFatura={()=>setModal({tipo:"transferencia",data:{tipo:"fatura"}})} onImportar={()=>setModal({tipo:"importarExtrato",data:{contexto:"conta"}})} customCats={customCats}/>
+        <TabContas contas={contasComSaldo} lancs={lancs} viewMes={viewMes} viewAno={viewAno} setViewMes={setViewMes} setViewAno={setViewAno} onSaldoInicial={saveSaldoInicial} onTransferencia={()=>setModal({tipo:"transferencia",data:{}})} onPagarFatura={()=>setModal({tipo:"pagarFatura",data:{}})} onImportar={()=>setModal({tipo:"importarExtrato",data:{contexto:"conta"}})} customCats={customCats}/>
       )}
 
       {/* INVESTIMENTOS */}
@@ -1001,7 +1038,7 @@ function TabGastos({lancs,lancsDoMes,viewMes,viewAno,setViewMes,setViewAno,custo
 }
 
 // ─── Tab Cartões ──────────────────────────────────────────────────────────────
-function TabCartoes({lancs,viewMes,viewAno,setViewMes,setViewAno,customCats,allCats,onEdit,onDelete,onNovaCompra,onImportar,cartoesNomes=[],dividas=[]}){
+function TabCartoes({lancs,viewMes,viewAno,setViewMes,setViewAno,customCats,allCats,onEdit,onDelete,onNovaCompra,onImportar,onPagarFatura,cartoesNomes=[],dividas=[]}){
   const [cartaoSel,setCartaoSel]=useState("");
   const cartaoAtivo=cartaoSel||cartoesNomes[0]||"";
   const comprasMes=lancs.filter(l=>l.tipo==="cartao"&&l.mesFatura===viewMes&&l.anoFatura===viewAno);
@@ -1034,7 +1071,10 @@ function TabCartoes({lancs,viewMes,viewAno,setViewMes,setViewAno,customCats,allC
           })}
           <button onClick={onNovaCompra} style={{padding:"8px 14px",borderRadius:10,border:"none",background:"#1a1a1a",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",flexShrink:0,marginLeft:"auto"}}>+ Compra</button>
         </div>
-        <button onClick={onImportar} style={{width:"100%",background:"#fff",border:"1px solid #1a1a1a",borderRadius:10,padding:"11px 0",color:"#1a1a1a",fontWeight:800,fontSize:13,cursor:"pointer",marginBottom:14}}>📸 Importar fatura por foto</button>
+        <div style={{display:"flex",gap:8,marginBottom:14}}>
+          <button onClick={onImportar} style={{flex:1,background:"#fff",border:"1px solid #1a1a1a",borderRadius:10,padding:"11px 0",color:"#1a1a1a",fontWeight:800,fontSize:13,cursor:"pointer"}}>📸 Importar fatura</button>
+          <button onClick={()=>onPagarFatura&&onPagarFatura(cartaoAtivo)} disabled={!cartaoAtivo||dividaAtiva<=0} style={{flex:1,background:dividaAtiva>0?"#1a1a1a":"#f3f4f6",border:"none",borderRadius:10,padding:"11px 0",color:dividaAtiva>0?"#fff":"#9ca3af",fontWeight:800,fontSize:13,cursor:dividaAtiva>0?"pointer":"not-allowed"}}>💳 Pagar fatura</button>
+        </div>
 
         {comprasCartao.length===0
           ? <div style={{textAlign:"center",color:"#9ca3af",padding:"32px 0",fontSize:13}}>Nenhuma compra no {cartaoAtivo} em {MESES[viewMes]}</div>
@@ -1400,6 +1440,8 @@ function LancForm({data,onSave,onClose,allCats,customCats=[],viewMes,viewAno,onI
   const handleData=v=>{set("data",v);if(v){const d=new Date(v+"T00:00:00");set("mes",d.getMonth());set("ano",d.getFullYear());}};
   const catsFiltradas=isEntrada?CATS_RECEITA:[...CATS_DESPESA,...(allCats.filter(c=>c.custom))];
   const sugestaoIR=["saude","medicamento","educacao","doacoes","dizimo"].includes(f.catId);
+  const cartaoErro=!!err&&isCartao&&!f.cartao;
+  const contaErro=!!err&&!isCartao&&!f.contaId;
   return(
     <Modal title={f.id?"Editar Lançamento":"Novo Lançamento"} onClose={onClose}>
       {!f.id&&(
@@ -1424,7 +1466,7 @@ function LancForm({data,onSave,onClose,allCats,customCats=[],viewMes,viewAno,onI
       {isCartao&&(
         <>
           <div style={{display:"flex",gap:10}}>
-            <Field label="Cartão *" half><select value={f.cartao} onChange={e=>set("cartao",e.target.value)} style={S.inp}><option value="">— Selecione —</option>{cartoesNomes.map(c=><option key={c}>{c}</option>)}</select></Field>
+            <Field label="Cartão *" half><select value={f.cartao} onChange={e=>set("cartao",e.target.value)} style={{...S.inp,...(cartaoErro?{borderColor:"#ef4444"}:{})}}><option value="">— Selecione —</option>{cartoesNomes.map(c=><option key={c}>{c}</option>)}</select></Field>
             <Field label="Nº parcelas" half><input value={f.parcelas} onChange={e=>set("parcelas",Math.max(1,+e.target.value||1))} type="number" min="1" max="60" style={S.inp}/></Field>
           </div>
           {(+f.parcelas||1)>1&&!f.id&&(
@@ -1443,7 +1485,7 @@ function LancForm({data,onSave,onClose,allCats,customCats=[],viewMes,viewAno,onI
       {!isCartao&&(
         <>
           <Field label="Forma de pagamento"><ChipSelect options={FORMAS_PAG} value={f.formaPag} onChange={v=>set("formaPag",v)}/></Field>
-          <Field label={isEntrada?"Conta de destino (onde entrou) *":"Conta de origem (de onde saiu) *"}><select value={f.contaId} onChange={e=>set("contaId",e.target.value)} style={S.inp}><option value="">— Selecione —</option>{contas.map(c=><option key={c.id} value={c.id}>{c.tipo==="carteira"?"👛":"🏦"} {c.nome}</option>)}</select></Field>
+          <Field label={isEntrada?"Conta de destino (onde entrou) *":"Conta de origem (de onde saiu) *"}><select value={f.contaId} onChange={e=>set("contaId",e.target.value)} style={{...S.inp,...(contaErro?{borderColor:"#ef4444"}:{})}}><option value="">— Selecione —</option>{contas.map(c=><option key={c.id} value={c.id}>{c.tipo==="carteira"?"👛":"🏦"} {c.nome}</option>)}</select></Field>
         </>
       )}
       <div style={{display:"flex",gap:10}}>
@@ -1861,6 +1903,29 @@ function CorrigirVinculoModal({lancs=[],contas=[],cartoesNomes=[],onSave,onClose
           <button onClick={()=>onSave(map)} disabled={!preenchidos} style={{...S.btn(PURPLE),width:"100%",padding:"13px 0",fontSize:14,opacity:preenchidos?1:.5}}>✓ Salvar {preenchidos} vínculo(s)</button>
         </>
       }
+    </Modal>
+  );
+}
+
+// ─── Pagar Fatura do Cartão ──────────────────────────────────────────────────
+function PagarFaturaModal({cartao,contas=[],cartoesNomes=[],dividas=[],onConfirm,onClose}){
+  const [card,setCard]=useState(cartao||cartoesNomes[0]||"");
+  const dividaDe=(c)=>(dividas.find(d=>d.nome===c)||{}).divida||0;
+  const [contaId,setContaId]=useState((contas[0]||{}).id||"");
+  const [valor,setValor]=useState(String(dividaDe(cartao||cartoesNomes[0]||"")||""));
+  const onCard=(c)=>{ setCard(c); setValor(String(dividaDe(c)||"")); };
+  const divida=dividaDe(card);
+  const ok=card&&contaId&&+valor>0;
+  return(
+    <Modal title="💳 Pagar fatura" onClose={onClose} maxW={420}>
+      <Field label="Cartão"><select value={card} onChange={e=>onCard(e.target.value)} style={S.inp}>{cartoesNomes.map(c=><option key={c}>{c}</option>)}</select></Field>
+      <div style={{background:"#f8f9fa",border:"1px solid #e5e7eb",borderRadius:10,padding:"10px 12px",marginBottom:12,fontSize:13,display:"flex",justifyContent:"space-between"}}>
+        <span style={{color:"#6b7280"}}>Dívida atual</span><span style={{fontWeight:800,color:divida>0?"#ef4444":"#10b981"}}>{fmt(divida)}</span>
+      </div>
+      <Field label="Pagar de qual conta"><select value={contaId} onChange={e=>setContaId(e.target.value)} style={S.inp}><option value="">— Selecione —</option>{contas.map(c=><option key={c.id} value={c.id}>{c.tipo==="carteira"?"👛":"🏦"} {c.nome} · {fmt(c.saldoAtual)}</option>)}</select></Field>
+      <Field label="Valor (R$)"><input value={valor} onChange={e=>setValor(e.target.value)} type="number" style={S.inp}/></Field>
+      <div style={{fontSize:11,color:"#9ca3af",marginBottom:10}}>Ao confirmar: debita da conta selecionada e marca os lançamentos do cartão como pagos.</div>
+      <button onClick={()=>ok&&onConfirm(card,contaId,+valor)} disabled={!ok} style={{...S.btn(PURPLE),width:"100%",padding:"13px 0",fontSize:14,opacity:ok?1:.5}}>✓ Pagar {fmt(+valor||0)}</button>
     </Modal>
   );
 }
