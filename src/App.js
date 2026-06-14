@@ -7,7 +7,7 @@ import { Html5Qrcode } from "html5-qrcode";
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const HOJE = new Date();
-const FORMAS_PAG = ["💳 Crédito","📱 Pix","🏦 Débito","🔄 Déb. Automático","📄 Boleto","💵 Dinheiro","📤 TED/DOC"];
+const FORMAS_PAG = ["📱 Pix","🏦 Débito","🔄 Déb. Automático","📄 Boleto","💵 Dinheiro","📤 TED/DOC"];
 // Contas e cartões agora vêm do Firebase: familias/{code}/contas e familias/{code}/cartoes — sem listas fixas.
 const TIPOS_CONTA = [["banco","🏦 Conta bancária"],["carteira","👛 Carteira"],["outro","📦 Outro"]];
 const CORES_PALETA = ["#1a1a1a","#10b981","#ef4444","#3b82f6","#f59e0b","#8b5cf6","#ec4899","#14b8a6","#6b7280"];
@@ -436,7 +436,7 @@ function MainApp({familyCode,user,onLogout}){
       const base=Date.now();
       const ops=[];
       for(let p=pa;p<=n;p++){
-        const off=p-pa; const r=addM(+rest.mes,+rest.ano,off);
+        const off=p-pa; const r=addM(+(rest.mesFatura??rest.mes),+(rest.anoFatura??rest.ano),off);
         ops.push(setDoc(doc(db,fp("lancamentos"),String(base+off)),{...rest,desc:`${rest.desc} (${p}/${n})`,valor:vp,parcela:`${p}/${n}`,mes:r.mes,ano:r.ano,mesFatura:r.mes,anoFatura:r.ano,updatedAt:base+off}));
       }
       await Promise.all(ops);
@@ -514,7 +514,11 @@ function MainApp({familyCode,user,onLogout}){
     const ids=Object.keys(map).filter(id=>map[id]);
     await Promise.all(ids.map(id=>{
       const l=lancs.find(x=>x.id===id); if(!l) return Promise.resolve();
-      const patch=l.tipo==="cartao"?{cartao:map[id]}:{contaId:map[id]};
+      const ehCredito=/cr[eé]dito/i.test(l.formaPag||"")&&!l.cartao&&l.tipo!=="cartao";
+      let patch;
+      if(l.tipo==="cartao") patch={cartao:map[id]};
+      else if(ehCredito) patch={cartao:map[id],tipo:"cartao",mesFatura:l.mesFatura??l.mes,anoFatura:l.anoFatura??l.ano,contaId:""}; // converte compra "Crédito" em lançamento de cartão
+      else patch={contaId:map[id]};
       return setDoc(doc(db,fp("lancamentos"),id),{...patch,updatedAt:Date.now()},{merge:true});
     }));
     toast2(`${ids.length} lançamento(s) corrigido(s)!`); setModal(null);
@@ -623,13 +627,15 @@ function MainApp({familyCode,user,onLogout}){
     return {nome:n,divida:Math.max(0,divida)};
   });
   const totalDividas=dividasCartoes.reduce((s,d)=>s+d.divida,0);
-  const saldoLivre=totalContas-totalDividas;
+  // Dívida que pesa no Saldo Livre = lançamentos de cartão não pagos do mês atual e anteriores (futuras não vencidas ficam de fora)
+  const dividaAteMes=lancs.filter(l=>l.tipo==="cartao"&&l.status!=="pago"&&cmpMonth(l.mesFatura??l.mes,l.anoFatura??l.ano,viewMes,viewAno)<=0).reduce((s,l)=>s+(+l.valor||0),0);
+  const saldoLivre=totalContas-dividaAteMes;
   // Faturas não pagas por mês de vencimento
   const faturaDoMes=(m,a)=>lancs.filter(l=>l.tipo==="cartao"&&l.status!=="pago"&&l.mesFatura===m&&l.anoFatura===a).reduce((s,l)=>s+(+l.valor||0),0);
   const faturaEsteMes=faturaDoMes(viewMes,viewAno);
   const _prox=addM(viewMes,viewAno,1);
   const faturaProxMes=faturaDoMes(_prox.mes,_prox.ano);
-  const lancsSemVinculo=lancs.filter(l=>(l.tipo==="cartao"&&!l.cartao)||((l.tipo==="entrada"||l.tipo==="saida")&&!l.contaId));
+  const lancsSemVinculo=lancs.filter(l=>(l.tipo==="cartao"&&!l.cartao)||(/cr[eé]dito/i.test(l.formaPag||"")&&!l.cartao&&l.tipo!=="cartao")||((l.tipo==="entrada"||l.tipo==="saida")&&!l.contaId&&!/cr[eé]dito/i.test(l.formaPag||"")));
 
   const totalInvestido=investimentos.reduce((s,i)=>s+(+i.saldoAtual||0),0);
 
@@ -744,7 +750,7 @@ function MainApp({familyCode,user,onLogout}){
             {/* Composição do Saldo Livre */}
             <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:16,padding:"14px 16px",marginTop:12,marginBottom:12}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span style={{color:"#6b7280"}}>Total em contas</span><span style={{fontWeight:800,color:"#1a1a1a"}}>{fmt(totalContas)}</span></div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:8}}><span style={{color:"#6b7280"}}>(−) Dívida cartões</span><span style={{fontWeight:800,color:"#ef4444"}}>{fmt(totalDividas)}</span></div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:8}}><span style={{color:"#6b7280"}}>(−) Faturas até {MESES[viewMes]}</span><span style={{fontWeight:800,color:"#ef4444"}}>{fmt(dividaAteMes)}</span></div>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:14,borderTop:"1px solid #e5e7eb",paddingTop:8}}><span style={{fontWeight:800,color:"#1a1a1a"}}>(=) Saldo Livre</span><span style={{fontWeight:900,color:saldoLivre>=0?"#10b981":"#ef4444"}}>{fmt(saldoLivre)}</span></div>
             </div>
             {/* Cards rápidos */}
@@ -1431,9 +1437,11 @@ function LeitorNFe({allCats,onClose,onImport}){
 }
 
 function LancForm({data,onSave,onClose,allCats,customCats=[],viewMes,viewAno,onImportNFe,membros=[],contas=[],cartoesNomes=[]}){
-  const [f,setF]=useState({tipo:"saida",desc:"",valor:"",catId:"",subId:"",formaPag:"📱 Pix",contaId:"",cartao:cartoesNomes[0]||"",membro:membros[0]||"",mes:viewMes,ano:viewAno,data:todayStr(),status:"confirmado",parcelas:1,parcelaAtual:1,irDedutivel:false,irTipo:"",...data});
+  const [f,setF]=useState({tipo:"saida",desc:"",valor:"",catId:"",subId:"",formaPag:"📱 Pix",contaId:"",cartao:"",membro:membros[0]||"",mes:viewMes,ano:viewAno,mesFatura:viewMes,anoFatura:viewAno,data:todayStr(),status:"confirmado",parcelas:1,parcelaAtual:1,irDedutivel:false,irTipo:"",...data});
   const [err,setErr]=useState("");
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
+  // Forma "Crédito" ⇒ é compra no cartão: muda o tipo automaticamente
+  useEffect(()=>{ if(/cr[eé]dito/i.test(f.formaPag||"")&&f.tipo!=="cartao") setF(p=>({...p,tipo:"cartao"})); },[f.formaPag,f.tipo]);
   const [showNFe,setShowNFe]=useState(false);
   const isCartao=f.tipo==="cartao";
   const isEntrada=f.tipo==="entrada";
@@ -1466,17 +1474,18 @@ function LancForm({data,onSave,onClose,allCats,customCats=[],viewMes,viewAno,onI
       {isCartao&&(
         <>
           <div style={{display:"flex",gap:10}}>
-            <Field label="Cartão *" half><select value={f.cartao} onChange={e=>set("cartao",e.target.value)} style={{...S.inp,...(cartaoErro?{borderColor:"#ef4444"}:{})}}><option value="">— Selecione —</option>{cartoesNomes.map(c=><option key={c}>{c}</option>)}</select></Field>
+            <Field label="Qual cartão? *" half><select value={f.cartao} onChange={e=>set("cartao",e.target.value)} style={{...S.inp,...(cartaoErro?{borderColor:"#ef4444"}:{})}}><option value="">— Selecione —</option>{cartoesNomes.map(c=><option key={c}>{c}</option>)}</select></Field>
             <Field label="Nº parcelas" half><input value={f.parcelas} onChange={e=>set("parcelas",Math.max(1,+e.target.value||1))} type="number" min="1" max="60" style={S.inp}/></Field>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Field label="Mês da fatura" half><select value={f.mesFatura} onChange={e=>set("mesFatura",+e.target.value)} style={S.inp}>{MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}</select></Field>
+            <Field label="Ano da fatura" half><input value={f.anoFatura} onChange={e=>set("anoFatura",+e.target.value)} type="number" style={S.inp}/></Field>
           </div>
           {(+f.parcelas||1)>1&&!f.id&&(
             <>
-              <div style={{display:"flex",gap:10}}>
-                <Field label="Parcela atual" half><input value={f.parcelaAtual} onChange={e=>set("parcelaAtual",Math.max(1,+e.target.value||1))} type="number" min="1" style={S.inp}/></Field>
-                <Field label="Mês da parcela atual" half><select value={f.mes} onChange={e=>set("mes",+e.target.value)} style={S.inp}>{MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}</select></Field>
-              </div>
+              <Field label="Parcela atual"><input value={f.parcelaAtual} onChange={e=>set("parcelaAtual",Math.max(1,+e.target.value||1))} type="number" min="1" style={S.inp}/></Field>
               <div style={{background:"#f8f9fa",border:"1px solid #e5e7eb",borderRadius:10,padding:"10px 12px",marginBottom:12,fontSize:12,color:"#374151"}}>
-                💳 {Math.max(1,(+f.parcelas||1)-(Math.min(+f.parcelaAtual||1,+f.parcelas||1))+1)} lançamento(s) de {fmt((+f.valor||0)/Math.max(1,+f.parcelas||1))} — da parcela {Math.min(+f.parcelaAtual||1,+f.parcelas||1)}/{f.parcelas} ({MESES[f.mes]}) até a {f.parcelas}/{f.parcelas}, criados automaticamente nas faturas seguintes.
+                💳 {Math.max(1,(+f.parcelas||1)-(Math.min(+f.parcelaAtual||1,+f.parcelas||1))+1)} lançamento(s) de {fmt((+f.valor||0)/Math.max(1,+f.parcelas||1))} — da parcela {Math.min(+f.parcelaAtual||1,+f.parcelas||1)}/{f.parcelas} ({MESES[f.mesFatura]}/{f.anoFatura}) em diante, criados nas faturas seguintes.
               </div>
             </>
           )}
@@ -1882,18 +1891,18 @@ function CorrigirVinculoModal({lancs=[],contas=[],cartoesNomes=[],onSave,onClose
           <div style={{fontSize:12,color:"#6b7280",marginBottom:12}}>{lancs.length} lançamento(s) sem vínculo. Selecione a conta ou cartão de cada um.</div>
           <div style={{maxHeight:"54vh",overflowY:"auto",marginBottom:14}}>
             {lancs.map(l=>{
-              const isCartao=l.tipo==="cartao";
+              const precisaCartao=l.tipo==="cartao"||(/cr[eé]dito/i.test(l.formaPag||"")&&!l.cartao);
               return(
                 <div key={l.id} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:"10px 12px",marginBottom:8}}>
                   <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:6}}>
                     <div style={{fontSize:12,fontWeight:700,color:"#1a1a1a",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.desc}</div>
-                    <div style={{fontSize:12,fontWeight:800,color:l.tipo==="entrada"?"#10b981":isCartao?"#1a1a1a":"#ef4444"}}>{fmt(l.valor)}</div>
+                    <div style={{fontSize:12,fontWeight:800,color:l.tipo==="entrada"?"#10b981":precisaCartao?"#1a1a1a":"#ef4444"}}>{fmt(l.valor)}</div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:10,color:"#9ca3af",fontWeight:700,whiteSpace:"nowrap"}}>{isCartao?"💳 Cartão":(l.tipo==="entrada"?"🏦 Entrou":"🏦 Saiu")} · {MESES[l.mes]}/{l.ano}</span>
+                    <span style={{fontSize:10,color:"#9ca3af",fontWeight:700,whiteSpace:"nowrap"}}>{precisaCartao?(l.tipo==="cartao"?"💳 Cartão":"💳 Crédito"):(l.tipo==="entrada"?"🏦 Entrou":"🏦 Saiu")} · {MESES[l.mes]}/{l.ano}</span>
                     <select value={map[l.id]||""} onChange={e=>setV(l.id,e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:1}}>
                       <option value="">— Selecione —</option>
-                      {isCartao?cartoesNomes.map(c=><option key={c} value={c}>{c}</option>):contas.map(c=><option key={c.id} value={c.id}>{c.tipo==="carteira"?"👛 ":"🏦 "}{c.nome}</option>)}
+                      {precisaCartao?cartoesNomes.map(c=><option key={c} value={c}>{c}</option>):contas.map(c=><option key={c.id} value={c.id}>{c.tipo==="carteira"?"👛 ":"🏦 "}{c.nome}</option>)}
                     </select>
                   </div>
                 </div>
