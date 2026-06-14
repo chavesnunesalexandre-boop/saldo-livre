@@ -60,6 +60,7 @@ const cmpMonth = (m1,a1,m2,a2) => a1*12+m1-(a2*12+m2);
 // Gera código de convite de 8 caracteres (sem caracteres ambíguos 0/O/1/I)
 function gerarCodigoConvite(){ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let s=""; for(let i=0;i<8;i++) s+=chars[Math.floor(Math.random()*chars.length)]; return s; }
 const CONVITE_TTL=24*60*60*1000; // 24h
+const CARTOES_FIXOS=["C6","XP","Nubank","Inter","Santander","Outro"]; // fallback enquanto não há cartões cadastrados
 
 // ─── Cadastro Base ────────────────────────────────────────────────────────────
 const BASE_TIPOS = {
@@ -603,7 +604,8 @@ function MainApp({familyCode,user,onLogout}){
   });
   const totalContas=contasComSaldo.reduce((s,c)=>s+c.saldoAtual,0);
   // Cartão = dívida acumulada: compras (todas as faturas) − pagamentos de fatura
-  const nomesCartoes=cartoes.length?cartoes.map(c=>c.nome):[...new Set(lancs.filter(l=>l.tipo==="cartao"&&l.cartao).map(l=>l.cartao))];
+  const cartoesDerivados=[...new Set(lancs.filter(l=>l.tipo==="cartao"&&l.cartao).map(l=>l.cartao))];
+  const nomesCartoes=cartoes.length?cartoes.map(c=>c.nome||c.id):(cartoesDerivados.length?cartoesDerivados:CARTOES_FIXOS);
   const dividasCartoes=nomesCartoes.map(n=>{
     const compras=lancs.filter(l=>l.tipo==="cartao"&&(l.cartao||"")===n).reduce((s,l)=>s+(+l.valor||0),0);
     const pagos=lancs.filter(l=>l.tipo==="saida"&&l.pagamentoFatura&&l.cartaoFatura===n&&l.status==="confirmado").reduce((s,l)=>s+(+l.valor||0),0);
