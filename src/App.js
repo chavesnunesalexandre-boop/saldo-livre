@@ -1633,6 +1633,8 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
   const [itens,setItens]=useState([]);
   const [mes,setMes]=useState(viewMes);
   const [ano,setAno]=useState(viewAno);
+  // Fallback: enquanto o usuário não cadastrar cartões personalizados, usa os padrão
+  const cartoesNomesFinais = cartoesNomes.length > 0 ? cartoesNomes : ["C6","XP","Nubank","Inter","Santander","Outro"];
 
   const escolher=(e)=>{ const fs=Array.from(e.target.files||[]); if(!fs.length) return; setFiles(fs); setResultado(false); setItens([]); setErro(""); };
 
@@ -1662,7 +1664,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
             catId:CAT_IDS_VALIDAS.has(it.categoria)?it.categoria:(inflow?"":sugerirCategoria(it.desc)),
             membro:membros[0]||"",
             vinculo:banco, // conta(id) ou cartão(nome) — herda do cabeçalho, editável por item
-            cartaoFatura:pag?(detectarBanco(it.desc,cartoesNomes)||cartoesNomes[0]||""):null,
+            cartaoFatura:pag?(detectarBanco(it.desc,cartoesNomesFinais)||cartoesNomesFinais[0]||""):null,
           };
           novo.dup=ehDuplicata(novo,acc);
           novo.sel=!novo.dup&&it.tipo!=="estorno";
@@ -1672,7 +1674,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
       acc.forEach((it,i)=>{it._i=i;});
       setItens(acc); setPeriodo(per); setDescartados(total-acc.length); setResultado(true);
       if(!banco){
-        if(isCartao){ const m=detectarBanco(bDet,cartoesNomes); if(m) setBanco(m); }
+        if(isCartao){ const m=detectarBanco(bDet,cartoesNomesFinais); if(m) setBanco(m); }
         else { const m=detectarBanco(bDet,contas.map(c=>c.nome)); const ct=contas.find(c=>c.nome===m); if(ct) setBanco(ct.id); }
       }
       if(!acc.length) setErro("Nenhuma transação reconhecida. Tente imagens mais nítidas.");
@@ -1732,7 +1734,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
           <Field label={isCartao?"Cartão":"Banco / Conta"}>
             <select value={banco} onChange={e=>setBanco(e.target.value)} style={S.inp}>
               <option value="">— Selecione —</option>
-              {isCartao?cartoesNomes.map(b=><option key={b} value={b}>{b}</option>):contas.map(c=><option key={c.id} value={c.id}>{c.tipo==="carteira"?"👛 ":""}{c.nome}</option>)}
+              {isCartao?cartoesNomesFinais.map(b=><option key={b} value={b}>{b}</option>):contas.map(c=><option key={c.id} value={c.id}>{c.tipo==="carteira"?"👛 ":""}{c.nome}</option>)}
             </select>
           </Field>
           {!banco?(
@@ -1762,7 +1764,7 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
           <div style={{background:"#f8f9fa",border:"1px solid #e5e7eb",borderRadius:12,padding:"10px 12px",marginBottom:12}}>
             <div style={{fontSize:12,color:"#1a1a1a",marginBottom:8,fontWeight:700}}>Importando para: {isCartao?`💳 ${banco}`:`🏦 ${(contas.find(c=>c.id===banco)||{}).nome||banco}`}{periodo?<span style={{color:"#9ca3af",fontWeight:600}}> · {periodo}</span>:null}</div>
             <div style={{display:"flex",gap:8}}>
-              <select value={banco} onChange={e=>{const v=e.target.value;setBanco(v);setItens(arr=>arr.map(it=>({...it,vinculo:v})));}} style={{...S.inp,fontSize:12,flex:1}}>{isCartao?cartoesNomes.map(b=><option key={b} value={b}>{b}</option>):contas.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+              <select value={banco} onChange={e=>{const v=e.target.value;setBanco(v);setItens(arr=>arr.map(it=>({...it,vinculo:v})));}} style={{...S.inp,fontSize:12,flex:1}}>{isCartao?cartoesNomesFinais.map(b=><option key={b} value={b}>{b}</option>):contas.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select>
               <select value={mes} onChange={e=>setMes(+e.target.value)} style={{...S.inp,fontSize:12,width:118}}>{MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}</select>
               <input value={ano} onChange={e=>setAno(+e.target.value)} type="number" style={{...S.inp,fontSize:12,width:76}}/>
             </div>
@@ -1796,10 +1798,10 @@ function ImportarExtrato({contexto,membros=[],onImport,onClose,viewMes,viewAno,c
                   </div>
                   <div style={{display:"flex",gap:6,paddingLeft:24,flexWrap:"wrap"}}>
                     <select value={it.vinculo||banco} onChange={e=>upd(it._i,"vinculo",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:"1 1 46%"}}>
-                      {isCartao?cartoesNomes.map(c=><option key={c} value={c}>💳 {c}</option>):contas.map(c=><option key={c.id} value={c.id}>🏦 {c.nome}</option>)}
+                      {isCartao?cartoesNomesFinais.map(c=><option key={c} value={c}>💳 {c}</option>):contas.map(c=><option key={c.id} value={c.id}>🏦 {c.nome}</option>)}
                     </select>
                     {pag
-                      ? <select value={it.cartaoFatura||cartoesNomes[0]||""} onChange={e=>upd(it._i,"cartaoFatura",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:"1 1 46%"}}><option value="">Fatura de…</option>{cartoesNomes.map(c=><option key={c}>{c}</option>)}</select>
+                      ? <select value={it.cartaoFatura||cartoesNomesFinais[0]||""} onChange={e=>upd(it._i,"cartaoFatura",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:"1 1 46%"}}><option value="">Fatura de…</option>{cartoesNomesFinais.map(c=><option key={c}>{c}</option>)}</select>
                       : <select value={it.catId} onChange={e=>upd(it._i,"catId",e.target.value)} style={{...S.inp,padding:"6px 8px",fontSize:11,flex:"1 1 46%"}}>
                           <option value="">— Categoria —</option>
                           {cats.map(c=><option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
